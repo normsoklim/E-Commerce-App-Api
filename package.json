@@ -4,7 +4,6 @@
   "type": "module",
   "description": "",
   "main": "src/server.js",
-
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
@@ -24,6 +23,7 @@
     "node-telegram-bot-api": "^0.66.0",
     "nodemailer": "^7.0.5",
     "openai": "^5.20.3",
+    "package-name": "^0.1.0",
     "qrcode": "^1.5.4",
     "stripe": "^18.4.0"
   },

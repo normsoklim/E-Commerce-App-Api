@@ -2,7 +2,7 @@ import express from "express";
 import Stripe from "stripe";
 import dotenv from "dotenv";
 import Order from "../models/Order.js";
-
+import bodyParser from "body-parser";
 dotenv.config();
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -10,7 +10,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 });
 
 // ⚠️ IMPORTANT: Webhook must use raw body
-import bodyParser from "body-parser";
+
 
 // For the webhook route ONLY
 router.post(

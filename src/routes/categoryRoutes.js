@@ -1,7 +1,7 @@
 import express from "express";
 import Category from "../models/Category.js";
 import { protect, admin } from "../middleware/authMiddleware.js";
-
+import Product from "../models/Product.js";
 const router = express.Router();
 
 // @desc    Get all categories
@@ -16,6 +16,32 @@ router.get("/", async (req, res) => {
   }
 });
 
+// @desc    Get categories with products
+// @route   GET /api/categories/with-products
+// @access  Public
+router.get("/with-products", async (req, res) => {
+  try {
+    const categories = await Category.aggregate([
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "category",
+          as: "products",
+        },
+      },
+      { $sort: { createdAt: -1 } }
+    ]);
+
+    res.json({
+      success: true,
+      count: categories.length,
+      data: categories
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 // @desc    Create a new category
 // @route   POST /api/categories
 // @access  Private (admin only)

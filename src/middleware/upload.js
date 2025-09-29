@@ -1,10 +1,17 @@
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 
-// Set storage engine
 const storage = multer.diskStorage({
   destination(req, file, cb) {
-    cb(null, "uploads/"); // folder to save uploaded files
+    const uploadPath = path.join(process.cwd(), "uploads");
+
+    // Ensure uploads folder exists
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+
+    cb(null, uploadPath);
   },
   filename(req, file, cb) {
     cb(
@@ -14,25 +21,6 @@ const storage = multer.diskStorage({
   },
 });
 
-// Check file type
-function checkFileType(file, cb) {
-  const filetypes = /jpg|jpeg|png/;
-  const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = filetypes.test(file.mimetype);
-
-  if (extname && mimetype) {
-    return cb(null, true);
-  } else {
-    cb("Images only!");
-  }
-}
-
-// Init upload
-const upload = multer({
-  storage,
-  fileFilter: function (req, file, cb) {
-    checkFileType(file, cb);
-  },
-});
+const upload = multer({ storage });
 
 export default upload;

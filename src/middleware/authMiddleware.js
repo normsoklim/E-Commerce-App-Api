@@ -1,9 +1,11 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
+// Protect routes - verify token and attach user to req
 export const protect = async (req, res, next) => {
   let token;
 
+  // Check if authorization header exists and starts with Bearer
   if (req.headers.authorization?.startsWith("Bearer")) {
     token = req.headers.authorization.split(" ")[1];
   }
@@ -16,19 +18,16 @@ export const protect = async (req, res, next) => {
     // Decode token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Fetch only what we need
-    const user = await User.findById(decoded.id).select("_id email role name");
+    // Fetch user with isAdmin included
+    const user = await User.findById(decoded.id).select("_id name email isAdmin");
 
     if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
 
-    if (!user.email) {
-      return res.status(400).json({ message: "User email not found" });
-    }
-
-    // Attach to req so all routes can use it
+    // Attach user to request
     req.user = user;
+
     next();
   } catch (error) {
     console.error("Auth error:", error.message);
@@ -36,7 +35,7 @@ export const protect = async (req, res, next) => {
   }
 };
 
-// Admin check middleware
+// Admin middleware - allow access only to admin users
 export const admin = (req, res, next) => {
   if (req.user && req.user.isAdmin) {
     next();

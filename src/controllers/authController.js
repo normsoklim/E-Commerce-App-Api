@@ -75,3 +75,36 @@ export const logoutAllDevices = async (req, res) => {
 
   res.json({ message: "Logged out from all devices successfully" });
 };
+
+// @desc Get profile
+export const getUserProfile = async (req, res) => {
+  const user = await User.findById(req.user._id);
+  if (user) {
+    res.json({ _id: user._id, name: user.name, email: user.email });
+  } else {
+    res.status(404).json({ message: "User not found" });
+  }
+};
+
+// @desc Update profile
+export const updateUserProfile = async (req, res) => {
+  const user = await User.findById(req.user._id);
+
+  if (user) {
+    user.name = req.body.name || user.name;
+    user.email = req.body.email || user.email;
+   
+    if (req.body.password) user.password = req.body.password;
+     if (req.file) user.avatar = `/uploads/avatars/${req.file.filename}`;
+    const updatedUser = await user.save();
+    res.json({
+      _id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      avatar: updatedUser.avatar,
+      token: generateToken(updatedUser._id),
+    });
+  } else {
+    res.status(404).json({ message: "User not found" });
+  }
+};

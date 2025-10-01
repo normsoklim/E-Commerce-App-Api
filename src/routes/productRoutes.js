@@ -176,6 +176,33 @@ router.post("/:id/review", protect, async (req, res) => {
   }
 });
 
+
+/**
+ * @desc   Search products by keyword (name, description, brand)
+ * @route  GET /api/products/search?keyword=...
+ * @access Public
+ */
+router.get("/search", async (req, res) => {
+  try {
+    const keyword = req.query.keyword
+      ? {
+          $or: [
+            { name: { $regex: req.query.keyword, $options: "i" } },
+            { description: { $regex: req.query.keyword, $options: "i" } },
+            { brand: { $regex: req.query.keyword, $options: "i" } }, // if brand exists
+          ],
+        }
+      : {};
+
+    const products = await Product.find(keyword)
+      .populate("category", "name description")
+      .sort({ createdAt: -1 });
+
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 /**
  * @desc   Get a single product by ID (with category + reviewCount + reviews sorted)
  * @route  GET /api/products/:id
@@ -200,5 +227,4 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
-
 export default router;

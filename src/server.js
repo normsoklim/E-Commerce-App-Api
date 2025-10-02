@@ -13,7 +13,7 @@ import adminAnalytics from "./routes/adminAnalytics.js";
 import shippingRoutes from "./routes/shippingRoutes.js";
 import carrierWebhook from "./routes/carrierWebhook.js";
 import chatbotRouter from "./routes/chatbot.js";
-
+import dealRoutes from "./routes/dealRoutes.js";
 dotenv.config();
 connectDB();
 initTelegramBot();
@@ -48,6 +48,9 @@ app.use("/api/shipping", shippingRoutes);
 app.use("/api/webhook", carrierWebhook);
 
 app.use("/api/chatbot", chatbotRouter);
+
+// Use Deal routes
+app.use('/api/deals', dealRoutes);
 
 app.use("/uploads", express.static("uploads"));
 

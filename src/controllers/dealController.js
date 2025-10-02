@@ -1,17 +1,19 @@
 import Deal from "../models/Deal.js";
 import Product from "../models/Product.js";
 
+// Get all active deals
 export const getDeals = async (req, res) => {
   try {
-    // Fetch active deals
     const deals = await Deal.find({ isActive: true })
-      .populate("products", "name price discountPercentage image");
+      .populate("products", "name price discountPercentage image"); // ✅ populate product details
 
     res.json(deals);
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+// Get single deal by ID
 export const getDealById = async (req, res) => {
   try {
     const deal = await Deal.findById(req.params.id)
@@ -25,6 +27,7 @@ export const getDealById = async (req, res) => {
   }
 };
 
+// Create a new deal
 export const createDeal = async (req, res) => {
   try {
     const { title, description, discountType, discountValue, startDate, endDate, products } = req.body;
@@ -43,9 +46,9 @@ export const createDeal = async (req, res) => {
     const createdDeal = await deal.save();
 
     // ✅ Apply discount to products
-    for (const productId of products) {
+    await Promise.all(products.map(async (productId) => {
       const product = await Product.findById(productId);
-      if (!product) continue;
+      if (!product) return;
 
       let newDiscount = 0;
       if (discountType === "percentage") {
@@ -56,15 +59,20 @@ export const createDeal = async (req, res) => {
 
       product.discountPercentage = newDiscount;
       await product.save();
-    }
+    }));
 
-    res.status(201).json(createdDeal);
+    // ✅ Return deal with populated products
+    const populatedDeal = await Deal.findById(createdDeal._id)
+      .populate("products", "name price discountPercentage image");
+
+    res.status(201).json(populatedDeal);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
+// Update a deal
 export const updateDeal = async (req, res) => {
   try {
     const deal = await Deal.findById(req.params.id);
@@ -83,9 +91,9 @@ export const updateDeal = async (req, res) => {
     await deal.save();
 
     // ✅ Re-apply discount to products
-    for (const productId of deal.products) {
+    await Promise.all(deal.products.map(async (productId) => {
       const product = await Product.findById(productId);
-      if (!product) continue;
+      if (!product) return;
 
       let newDiscount = 0;
       if (deal.discountType === "percentage") {
@@ -96,9 +104,13 @@ export const updateDeal = async (req, res) => {
 
       product.discountPercentage = newDiscount;
       await product.save();
-    }
+    }));
 
-    res.json(deal);
+    // ✅ Return updated deal with populated products
+    const populatedDeal = await Deal.findById(deal._id)
+      .populate("products", "name price discountPercentage image");
+
+    res.json(populatedDeal);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error", error: error.message });

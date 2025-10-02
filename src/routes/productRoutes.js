@@ -204,12 +204,13 @@ router.get("/search", async (req, res) => {
   }
 });
 /**
- * @desc   Get a single product by ID (with category + reviewCount + reviews sorted)
+ * @desc   Get a single product by ID (with category + promotion + reviewCount + reviews sorted)
  * @route  GET /api/products/:id
  * @access Public
  */
 router.get("/:id", async (req, res) => {
   try {
+    // 1️⃣ Find the product and populate category
     const product = await Product.findById(req.params.id).populate(
       "category",
       "name description"
@@ -217,8 +218,32 @@ router.get("/:id", async (req, res) => {
 
     if (!product) return res.status(404).json({ message: "Product not found" });
 
+    // 2️⃣ Check for active promotion/deal
+    const deal = await Deal.findOne({
+      products: product._id,
+      isActive: true,
+      startDate: { $lte: new Date() },
+      endDate: { $gte: new Date() },
+    });
+
+    if (deal) {
+      product.originalPrice = product.price;
+      product.discountPercentage =
+        deal.discountType === "percentage"
+          ? deal.discountValue
+          : Math.round((deal.discountValue / product.price) * 100);
+      product.discountPrice = Math.round(
+        product.price * (1 - product.discountPercentage / 100)
+      );
+    } else {
+      product.discountPrice = product.price;
+      product.discountPercentage = 0;
+    }
+
+    // 3️⃣ Sort reviews newest first
     product.reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+    // 4️⃣ Return product with promotion info
     res.json({
       ...product.toObject(),
       reviewCount: product.numReviews,
@@ -227,4 +252,5 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+
 export default router;

@@ -30,7 +30,6 @@ export const createProduct = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 export const getProductDetail = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)

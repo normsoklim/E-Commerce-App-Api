@@ -32,13 +32,19 @@ export const createProduct = async (req, res) => {
 };
 export const getProductDetail = async (req, res) => {
   try {
+    // 1️⃣ Find the product, populate category and reviews
     const product = await Product.findById(req.params.id)
-      .populate("category", "name")
-      .lean();
+      .populate("category", "name description")
+      .populate({
+        path: "reviews",
+        options: { sort: { createdAt: -1 } }, // newest first
+      });
 
-    if (!product) return res.status(404).json({ message: "Product not found" });
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
 
-    // Optional: fetch active deal affecting this product
+    // 2️⃣ Check for active promotion/deal
     const deal = await Deal.findOne({
       products: product._id,
       isActive: true,
@@ -46,14 +52,28 @@ export const getProductDetail = async (req, res) => {
       endDate: { $gte: new Date() },
     });
 
-    if (deal) {
-      product.discountPercentage = deal.discountType === "percentage"
-        ? deal.discountValue
-        : Math.round((deal.discountValue / product.price) * 100);
+    if (deal && product.price > 0) {
+      product.originalPrice = product.price;
+      product.discountPercentage =
+        deal.discountType === "percentage"
+          ? deal.discountValue
+          : Math.round((deal.discountValue / product.price) * 100);
+
+      product.discountPrice = Math.round(
+        product.price * (1 - product.discountPercentage / 100)
+      );
+    } else {
+      product.discountPrice = product.price;
+      product.discountPercentage = 0;
     }
 
-    res.json(product);
-  } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    // 3️⃣ Return product with review count
+    res.json({
+      ...product.toObject(),
+      reviewCount: product.reviews ? product.reviews.length : 0,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };

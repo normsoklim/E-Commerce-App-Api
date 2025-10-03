@@ -14,6 +14,7 @@ import shippingRoutes from "./routes/shippingRoutes.js";
 import carrierWebhook from "./routes/carrierWebhook.js";
 import chatbotRouter from "./routes/chatbot.js";
 import dealRoutes from "./routes/dealRoutes.js";
+
 dotenv.config();
 connectDB();
 initTelegramBot();

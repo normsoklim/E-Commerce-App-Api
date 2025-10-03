@@ -1,7 +1,8 @@
 import express from "express";
 import Product from "../models/Product.js";
 import Category from "../models/Category.js";
-import Cart from "../models/Cart.js"; // ✅ missing import
+import Cart from "../models/Cart.js";
+import Deal from "../models/Deal.js"; // Import Deal model
 import { protect, admin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -45,7 +46,7 @@ router.get("/category/:id", async (req, res) => {
  * @route  POST /api/products
  * @access Private (admin only)
  */
-router.post("/", protect,admin, async (req, res) => {
+router.post("/", protect, admin, async (req, res) => {
   try {
     const { name, description, price, stock, category, image, discountPercentage, isNew } = req.body;
 
@@ -72,7 +73,7 @@ router.post("/", protect,admin, async (req, res) => {
  * @route  PUT /api/products/:id
  * @access Private (admin only)
  */
-router.put("/:id", protect, async (req, res) => {
+router.put("/:id", protect, admin, async (req, res) => {
   try {
     const { name, description, price, stock, category, image, discountPercentage, isNew } = req.body;
     const product = await Product.findById(req.params.id);
@@ -176,7 +177,6 @@ router.post("/:id/review", protect, async (req, res) => {
   }
 });
 
-
 /**
  * @desc   Search products by keyword (name, description, brand)
  * @route  GET /api/products/search?keyword=...
@@ -189,7 +189,7 @@ router.get("/search", async (req, res) => {
           $or: [
             { name: { $regex: req.query.keyword, $options: "i" } },
             { description: { $regex: req.query.keyword, $options: "i" } },
-            { brand: { $regex: req.query.keyword, $options: "i" } }, // if brand exists
+            { brand: { $regex: req.query.keyword, $options: "i" } },
           ],
         }
       : {};
@@ -203,6 +203,7 @@ router.get("/search", async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+
 /**
  * @desc   Get a single product by ID (with category + promotion + reviewCount + reviews sorted)
  * @route  GET /api/products/:id
@@ -210,45 +211,72 @@ router.get("/search", async (req, res) => {
  */
 router.get("/:id", async (req, res) => {
   try {
-    // 1️⃣ Find the product and populate category
-    const product = await Product.findById(req.params.id).populate(
-      "category",
-      "name description"
-    );
+    // Find the product, populate category and review users
+    const product = await Product.findById(req.params.id)
+      .populate("category", "name description")
+      .populate({
+        path: "reviews.user",
+        select: "name",
+      });
 
-    if (!product) return res.status(404).json({ message: "Product not found" });
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
 
-    // 2️⃣ Check for active promotion/deal
-    const deal = await Deal.findOne({
-      products: product._id,
-      isActive: true,
-      startDate: { $lte: new Date() },
-      endDate: { $gte: new Date() },
-    });
+    // Check for active promotion/deal
+    let deal = null;
+    try {
+      deal = await Deal.findOne({
+        products: product._id,
+        isActive: true,
+        startDate: { $lte: new Date() },
+        endDate: { $gte: new Date() },
+      });
+    } catch (dealError) {
+      // If Deal model doesn't exist or there's an error, continue without deal
+      console.log("Deal lookup skipped:", dealError.message);
+    }
 
-    if (deal) {
-      product.originalPrice = product.price;
-      product.discountPercentage =
+    // Create a response object to avoid modifying the original product
+    const productResponse = product.toObject();
+    
+    if (deal && product.price > 0) {
+      productResponse.originalPrice = product.price;
+      productResponse.discountPercentage =
         deal.discountType === "percentage"
           ? deal.discountValue
           : Math.round((deal.discountValue / product.price) * 100);
-      product.discountPrice = Math.round(
-        product.price * (1 - product.discountPercentage / 100)
+
+      productResponse.discountPrice = Math.round(
+        product.price * (1 - productResponse.discountPercentage / 100)
       );
+      productResponse.hasDeal = true;
+      productResponse.dealName = deal.name;
     } else {
-      product.discountPrice = product.price;
-      product.discountPercentage = 0;
+      // Use product's own discount percentage if no active deal
+      productResponse.discountPrice = product.discountPercentage > 0 
+        ? Math.round(product.price * (1 - product.discountPercentage / 100))
+        : product.price;
+      productResponse.discountPercentage = product.discountPercentage || 0;
+      productResponse.hasDeal = false;
     }
 
-    // 3️⃣ Sort reviews newest first
-    product.reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // Add review count and ensure reviews array exists
+    productResponse.reviewCount = product.reviews ? product.reviews.length : 0;
+    
+    // Sort reviews by creation date (newest first)
+    if (productResponse.reviews) {
+      productResponse.reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
 
-    // 4️⃣ Return product with promotion info
-    res.json({
-      ...product.toObject(),
-      reviewCount: product.numReviews,
-    });
+    res.json(productResponse);
   } catch (error) {
+    console.error("Product detail error:", error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: "Invalid product ID" });
+    }
+    
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });

@@ -1,17 +1,18 @@
 import express from "express";
+import mongoose from "mongoose"; // ✅ Added this import
 import Category from "../models/Category.js";
-import { protect, admin } from "../middleware/authMiddleware.js";
 import Product from "../models/Product.js";
+import { protect, admin } from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 
 // ------------------------------
-// @desc    Get all categories (with optional products and count)
+// @desc    Get all categories
 // @route   GET /api/categories
 // @access  Public
 // ------------------------------
 router.get("/", async (req, res) => {
   try {
-    // If you want products included, use /with-products instead
     const categories = await Category.find().sort({ createdAt: -1 });
     res.json(categories);
   } catch (error) {
@@ -20,42 +21,58 @@ router.get("/", async (req, res) => {
 });
 
 // ------------------------------
-// @desc    Get categories with products and count
-// @route   GET /api/categories/with-products
+// @desc    Get single category by ID
+// @route   GET /api/categories/:id
+// @access  Public
+// ------------------------------
+router.get("/:id", async (req, res) => {
+  try {
+    const category = await Category.findById(req.params.id);
+    if (!category)
+      return res.status(404).json({ message: "Category not found" });
+
+    res.json(category);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// ------------------------------
+// @desc    Get single category with products and count
+// @route   GET /api/categories/:id/with-products
 // @access  Public
 // ------------------------------
 router.get("/:id/with-products", async (req, res) => {
   try {
     const categoryId = req.params.id;
+
     const category = await Category.aggregate([
-      { $match: { _id: new mongoose.Types.ObjectId(categoryId) } },
+      { $match: { _id: new mongoose.Types.ObjectId(categoryId) } }, // ✅ Proper use
       {
         $lookup: {
           from: "products",
           localField: "_id",
           foreignField: "category",
-          as: "products"
-        }
-      }
+          as: "products",
+        },
+      },
+      {
+        $addFields: {
+          count: { $size: "$products" }, // ✅ Add product count
+        },
+      },
     ]);
 
     if (!category || category.length === 0) {
       return res.status(404).json({ message: "Category not found" });
     }
 
-    // add count
-    const catWithCount = {
-      ...category[0],
-      count: category[0].products?.length || 0
-    };
-
-    res.json(catWithCount);
+    res.json(category[0]);
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching category with products:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
-
 
 // ------------------------------
 // @desc    Create a new category
@@ -84,57 +101,6 @@ router.post("/", protect, admin, async (req, res) => {
 });
 
 // ------------------------------
-// @desc    Get category by ID
-// @route   GET /api/categories/:id
-// @access  Public
-// ------------------------------
-router.get("/:id", async (req, res) => {
-  try {
-    const category = await Category.findById(req.params.id);
-    if (!category) return res.status(404).json({ message: "Category not found" });
-    res.json(category);
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-});
-
-// ------------------------------
-// @desc    Get single category with products and count
-// @route   GET /api/categories/:id/with-products
-// @access  Public
-// ------------------------------
-router.get("/:id/with-products", async (req, res) => {
-  try {
-    const categoryId = req.params.id;
-
-    const category = await Category.aggregate([
-      { $match: { _id: require('mongoose').Types.ObjectId(categoryId) } },
-      {
-        $lookup: {
-          from: "products",
-          localField: "_id",
-          foreignField: "category",
-          as: "products",
-        },
-      },
-      {
-        $addFields: {
-          count: { $size: "$products" } // product count
-        }
-      }
-    ]);
-
-    if (!category || category.length === 0) {
-      return res.status(404).json({ message: "Category not found" });
-    }
-
-    res.json(category[0]);
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-});
-
-// ------------------------------
 // @desc    Update category
 // @route   PUT /api/categories/:id
 // @access  Private (admin)
@@ -144,7 +110,8 @@ router.put("/:id", protect, admin, async (req, res) => {
 
   try {
     const category = await Category.findById(req.params.id);
-    if (!category) return res.status(404).json({ message: "Category not found" });
+    if (!category)
+      return res.status(404).json({ message: "Category not found" });
 
     if (name) category.name = name;
     if (description) category.description = description;
@@ -164,7 +131,8 @@ router.put("/:id", protect, admin, async (req, res) => {
 router.delete("/:id", protect, admin, async (req, res) => {
   try {
     const category = await Category.findById(req.params.id);
-    if (!category) return res.status(404).json({ message: "Category not found" });
+    if (!category)
+      return res.status(404).json({ message: "Category not found" });
 
     await category.deleteOne();
     res.json({ message: "Category removed successfully" });
@@ -172,6 +140,5 @@ router.delete("/:id", protect, admin, async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
-
 
 export default router;

@@ -1,53 +1,19 @@
 import express from "express";
-import mongoose from "mongoose"; // ✅ Added this import
+import mongoose from "mongoose";
 import Category from "../models/Category.js";
 import Product from "../models/Product.js";
 import { protect, admin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// ------------------------------
-// @desc    Get all categories
-// @route   GET /api/categories
-// @access  Public
-// ------------------------------
-router.get("/", async (req, res) => {
+/* ---------------------------------------------------
+ * ✅ 1️⃣ Get all categories (with products & count)
+ *     GET /api/categories/with-products
+ *     Public
+ * --------------------------------------------------- */
+router.get("/with-products", async (req, res) => {
   try {
-    const categories = await Category.find().sort({ createdAt: -1 });
-    res.json(categories);
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-});
-
-// ------------------------------
-// @desc    Get single category by ID
-// @route   GET /api/categories/:id
-// @access  Public
-// ------------------------------
-router.get("/:id", async (req, res) => {
-  try {
-    const category = await Category.findById(req.params.id);
-    if (!category)
-      return res.status(404).json({ message: "Category not found" });
-
-    res.json(category);
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-});
-
-// ------------------------------
-// @desc    Get single category with products and count
-// @route   GET /api/categories/:id/with-products
-// @access  Public
-// ------------------------------
-router.get("/:id/with-products", async (req, res) => {
-  try {
-    const categoryId = req.params.id;
-
-    const category = await Category.aggregate([
-      { $match: { _id: new mongoose.Types.ObjectId(categoryId) } }, // ✅ Proper use
+    const categories = await Category.aggregate([
       {
         $lookup: {
           from: "products",
@@ -58,7 +24,46 @@ router.get("/:id/with-products", async (req, res) => {
       },
       {
         $addFields: {
-          count: { $size: "$products" }, // ✅ Add product count
+          count: { $size: "$products" },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ]);
+
+    res.json(categories);
+  } catch (error) {
+    console.error("Error fetching categories with products:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+/* ---------------------------------------------------
+ * ✅ 2️⃣ Get single category with products and count
+ *     GET /api/categories/:id/with-products
+ *     Public
+ * --------------------------------------------------- */
+router.get("/:id/with-products", async (req, res) => {
+  try {
+    const categoryId = req.params.id;
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ message: "Invalid category ID format" });
+    }
+
+    const category = await Category.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(categoryId) } },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "category",
+          as: "products",
+        },
+      },
+      {
+        $addFields: {
+          count: { $size: "$products" },
         },
       },
     ]);
@@ -74,11 +79,46 @@ router.get("/:id/with-products", async (req, res) => {
   }
 });
 
-// ------------------------------
-// @desc    Create a new category
-// @route   POST /api/categories
-// @access  Private (admin)
-// ------------------------------
+/* ---------------------------------------------------
+ * ✅ 3️⃣ Get all categories (basic, no products)
+ *     GET /api/categories
+ *     Public
+ * --------------------------------------------------- */
+router.get("/", async (req, res) => {
+  try {
+    const categories = await Category.find().sort({ createdAt: -1 });
+    res.json(categories);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+/* ---------------------------------------------------
+ * ✅ 4️⃣ Get single category by ID (no products)
+ *     GET /api/categories/:id
+ *     Public
+ * --------------------------------------------------- */
+router.get("/:id", async (req, res) => {
+  try {
+    const categoryId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ message: "Invalid category ID format" });
+    }
+
+    const category = await Category.findById(categoryId);
+    if (!category)
+      return res.status(404).json({ message: "Category not found" });
+
+    res.json(category);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+/* ---------------------------------------------------
+ * ✅ 5️⃣ Create a new category (admin only)
+ * --------------------------------------------------- */
 router.post("/", protect, admin, async (req, res) => {
   const { name, description } = req.body;
 
@@ -100,11 +140,9 @@ router.post("/", protect, admin, async (req, res) => {
   }
 });
 
-// ------------------------------
-// @desc    Update category
-// @route   PUT /api/categories/:id
-// @access  Private (admin)
-// ------------------------------
+/* ---------------------------------------------------
+ * ✅ 6️⃣ Update category (admin only)
+ * --------------------------------------------------- */
 router.put("/:id", protect, admin, async (req, res) => {
   const { name, description } = req.body;
 
@@ -123,11 +161,9 @@ router.put("/:id", protect, admin, async (req, res) => {
   }
 });
 
-// ------------------------------
-// @desc    Delete category
-// @route   DELETE /api/categories/:id
-// @access  Private (admin)
-// ------------------------------
+/* ---------------------------------------------------
+ * ✅ 7️⃣ Delete category (admin only)
+ * --------------------------------------------------- */
 router.delete("/:id", protect, admin, async (req, res) => {
   try {
     const category = await Category.findById(req.params.id);

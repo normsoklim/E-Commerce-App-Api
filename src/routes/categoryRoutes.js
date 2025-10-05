@@ -24,34 +24,38 @@ router.get("/", async (req, res) => {
 // @route   GET /api/categories/with-products
 // @access  Public
 // ------------------------------
-router.get("/with-products", async (req, res) => {
+router.get("/:id/with-products", async (req, res) => {
   try {
-    const categories = await Category.aggregate([
+    const categoryId = req.params.id;
+    const category = await Category.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(categoryId) } },
       {
         $lookup: {
-          from: "products",      // collection name
+          from: "products",
           localField: "_id",
           foreignField: "category",
-          as: "products",
-        },
-      },
-      {
-        $addFields: {
-          count: { $size: "$products" }  // count of products
+          as: "products"
         }
-      },
-      { $sort: { createdAt: -1 } }
+      }
     ]);
 
-    res.json({
-      success: true,
-      count: categories.length,
-      data: categories
-    });
+    if (!category || category.length === 0) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    // add count
+    const catWithCount = {
+      ...category[0],
+      count: category[0].products?.length || 0
+    };
+
+    res.json(catWithCount);
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error(error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+
 
 // ------------------------------
 // @desc    Create a new category

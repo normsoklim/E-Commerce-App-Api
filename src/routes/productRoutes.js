@@ -41,14 +41,13 @@ router.get("/category/:id", async (req, res) => {
   }
 });
 
-/**
- * @desc   Create new product
- * @route  POST /api/products
- * @access Private (admin only)
- */
 router.post("/", protect, admin, async (req, res) => {
   try {
-    const { name, description, price, stock, category, image, discountPercentage, isNew } = req.body;
+    let { name, description, price, stock, category, image, discountPercentage, isNew } = req.body;
+
+    // Ensure image is always an array
+    if (typeof image === "string") image = [image];
+    if (!Array.isArray(image)) image = [];
 
     const product = new Product({
       name,
@@ -68,16 +67,11 @@ router.post("/", protect, admin, async (req, res) => {
   }
 });
 
-/**
- * @desc   Update product
- * @route  PUT /api/products/:id
- * @access Private (admin only)
- */
+
 router.put("/:id", protect, admin, async (req, res) => {
   try {
-    const { name, description, price, stock, category, image, discountPercentage, isNew } = req.body;
+    let { name, description, price, stock, category, image, discountPercentage, isNew } = req.body;
     const product = await Product.findById(req.params.id);
-
     if (!product) return res.status(404).json({ message: "Product not found" });
 
     if (name !== undefined) product.name = name;
@@ -85,13 +79,20 @@ router.put("/:id", protect, admin, async (req, res) => {
     if (price !== undefined) product.price = price;
     if (stock !== undefined) product.stock = stock;
     if (category !== undefined) product.category = category;
-    if (image !== undefined) product.image = image;
+
+    // Ensure image is array
+    if (image !== undefined) {
+      if (typeof image === "string") image = [image];
+      if (!Array.isArray(image)) image = [];
+      product.image = image;
+    }
+
     if (discountPercentage !== undefined) product.discountPercentage = discountPercentage;
     if (isNew !== undefined) product.isNew = isNew;
 
     const updatedProduct = await product.save();
 
-    // ✅ Update cart prices if needed
+    // Update cart prices
     const carts = await Cart.find({ "items.product": product._id });
     for (const cart of carts) {
       cart.items.forEach(item => {

@@ -18,16 +18,20 @@ const productSchema = new mongoose.Schema(
     description: String,
     price: { type: Number, required: true },
     stock: { type: Number, required: true },
-    image: { type: String, required: true },
+    image: {
+      type: [String],  // <-- Change here
+      required: true,
+      default: [],     // <-- Default empty array
+    },
     category: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true },
-    rating: { type: Number, default: 0 },          // Average rating
-    numReviews: { type: Number, default: 0 },      // Total number of reviews
-    reviews: [reviewSchema],                        // Store reviews
-    // ✅ Add these fields
+    rating: { type: Number, default: 0 },
+    numReviews: { type: Number, default: 0 },
+    reviews: [reviewSchema],
     discountPercentage: { type: Number, default: 0 },
     isNew: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
+
 
 export default mongoose.model("Product", productSchema);

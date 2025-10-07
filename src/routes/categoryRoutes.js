@@ -120,7 +120,7 @@ router.get("/:id", async (req, res) => {
  * ✅ 5️⃣ Create a new category (admin only)
  * --------------------------------------------------- */
 router.post("/", protect, admin, async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, image } = req.body;
 
   if (!name) {
     return res.status(400).json({ message: "Name is required" });
@@ -132,7 +132,7 @@ router.post("/", protect, admin, async (req, res) => {
       return res.status(400).json({ message: "Category already exists" });
     }
 
-    const category = new Category({ name, description });
+    const category = new Category({ name, description, image });
     const createdCategory = await category.save();
     res.status(201).json(createdCategory);
   } catch (error) {
@@ -144,7 +144,7 @@ router.post("/", protect, admin, async (req, res) => {
  * ✅ 6️⃣ Update category (admin only)
  * --------------------------------------------------- */
 router.put("/:id", protect, admin, async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description , image} = req.body;
 
   try {
     const category = await Category.findById(req.params.id);
@@ -153,6 +153,7 @@ router.put("/:id", protect, admin, async (req, res) => {
 
     if (name) category.name = name;
     if (description) category.description = description;
+    if (image) category.image = image;
 
     const updatedCategory = await category.save();
     res.json(updatedCategory);

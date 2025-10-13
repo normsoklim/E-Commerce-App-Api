@@ -2,3 +2,5 @@ node_modules
 products.json
 .env
 uploads
+.notification-api-test.md
+.test-notification-api.js

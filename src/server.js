@@ -14,6 +14,7 @@ import shippingRoutes from "./routes/shippingRoutes.js";
 import carrierWebhook from "./routes/carrierWebhook.js";
 import chatbotRouter from "./routes/chatbot.js";
 import dealRoutes from "./routes/dealRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 
 dotenv.config();
 connectDB();
@@ -52,6 +53,9 @@ app.use("/api/chatbot", chatbotRouter);
 
 // Use Deal routes
 app.use('/api/deals', dealRoutes);
+
+// Use Notification routes
+app.use('/api/notifications', notificationRoutes);
 
 app.use("/uploads", express.static("uploads"));
 

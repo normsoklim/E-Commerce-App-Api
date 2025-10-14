@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Checkout - Cambodia E-commerce</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .checkout-container {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .checkout-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        
+        .payment-methods {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .payment-method {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .payment-method:hover {
+            border-color: #3498db;
+            transform: translateY(-2px);
+        }
+        
+        .payment-method.selected {
+            border-color: #3498db;
+            background-color: #e3f2fd;
+        }
+        
+        .payment-method img {
+            width: 60px;
+            height: 40px;
+            object-fit: contain;
+            margin-bottom: 10px;
+        }
+        
+        .khqr-display {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .khqr-code {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        
+        .khqr-instructions {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background 0.3s ease;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            background: #2980b9;
+        }
+        
+        .btn-paypal {
+            background: #0070ba;
+        }
+        
+        .btn-paypal:hover {
+            background: #005a9e;
+        }
+        
+        .btn-khqr {
+            background: #00b4a0;
+        }
+        
+        .btn-khqr:hover {
+            background: #009a87;
+        }
+        
+        .order-summary-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .total {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #e74c3c;
+            margin-top: 10px;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .notification {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: none;
+        }
+        
+        .notification.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .notification.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Secure Checkout</h1>
+            <p>Complete your purchase with PayPal or KHQR</p>
+        </header>
+
+        <div class="notification" id="notification"></div>
+
+        <div class="checkout-container">
+            <div class="left-column">
+                <div class="card">
+                    <h2 class="card-title">Payment Method</h2>
+                    
+                    <div class="payment-methods">
+                        <div class="payment-method" data-method="paypal" onclick="selectPaymentMethod('paypal')">
+                            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MDAgMjAwIj48cGF0aCBmaWxsPSIjMDA3MEJBIiBkPSJNMzEwIDYwSDE5MGwtMzAgNDAgMTIwIDAgMzAtNDB6TTQwMCA4MEgzMDBsLTMwIDQwIDEwMCAwIDMwLTQweiIvPjxwYXRoIGZpbGw9IiNGRkYiIGQ9Ik0xNDAgNjBINjBsMzAtNDAgODAgMCAzNCA0MHpNMTQwIDgwSDEwMGwtMzAgNDAgNzAgMCAzMC00MHoiLz48L3N2Zz4=" alt="PayPal">
+                            <h3>PayPal</h3>
+                            <p>Credit/Debit Cards</p>
+                        </div>
+                        
+                        <div class="payment-method" data-method="khqr" onclick="selectPaymentMethod('khqr')">
+                            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9IjEwMCIgZmlsbD0iIzAwYjRhMCIvPjxwYXRoIGQ9Ik01MCA1MEgxNTB2MTAwSDUweiIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik03NSA3NUg4NXY1MEg3NXoiIGZpbGw9IiMwMGI0YTAiLz48cGF0aCBkPSJNMTA1IDc1SDEyNXY1MEgxMDV6IiBmaWxsPSIjMDBiNGEwIi8+PC9zdmc+" alt="KHQR">
+                            <h3>KHQR</h3>
+                            <p>ABA, ACLEDA, Wing</p>
+                        </div>
+                    </div>
+                    
+                    <div id="payment-details">
+                        <!-- PayPal payment form -->
+                        <div id="paypal-section" class="hidden">
+                            <h3>PayPal Payment</h3>
+                            <p>Secure payment with PayPal. You will be redirected to complete the payment.</p>
+                            <button class="btn btn-paypal" onclick="initiatePayPalPayment()">Pay with PayPal</button>
+                        </div>
+                        
+                        <!-- KHQR payment section -->
+                        <div id="khqr-section" class="hidden">
+                            <h3>KHQR Payment</h3>
+                            <p>Scan the QR code with your mobile banking app to complete payment.</p>
+                            
+                            <div class="khqr-display">
+                                <div class="khqr-code" id="khqr-code-container">
+                                    <p>QR Code will appear here</p>
+                                </div>
+                                <button class="btn btn-khqr" onclick="generateKHQRPayment()">Generate KHQR Code</button>
+                                
+                                <div class="khqr-instructions">
+                                    <h4>How to pay with KHQR:</h4>
+                                    <ol>
+                                        <li>Click "Generate KHQR Code" above</li>
+                                        <li>Open your mobile banking app (ABA, ACLEDA, Wing, etc.)</li>
+                                        <li>Use the QR scanner to scan the code</li>
+                                        <li>Confirm and complete the payment</li>
+                                        <li>Return here to verify payment</li>
+                                    </ol>
+                                </div>
+                                
+                                <button class="btn" onclick="verifyKHQRPayment()" style="margin-top: 15px;">Verify Payment</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Processing your payment...</p>
+                </div>
+            </div>
+            
+            <div class="right-column">
+                <div class="card">
+                    <h2 class="card-title">Order Summary</h2>
+                    
+                    <div id="order-items">
+                        <div class="order-summary-item">
+                            <span>Product 1</span>
+                            <span>$29.99</span>
+                        </div>
+                        <div class="order-summary-item">
+                            <span>Product 2</span>
+                            <span>$19.99</span>
+                        </div>
+                        <div class="order-summary-item">
+                            <span>Shipping</span>
+                            <span>$5.99</span>
+                        </div>
+                    </div>
+                    
+                    <div class="order-summary-item total">
+                        <span>Total:</span>
+                        <span id="order-total">$55.97</span>
+                    </div>
+                    
+                    <div class="card" style="margin-top: 20px;">
+                        <h3>Shipping Information</h3>
+                        <p><strong>John Doe</strong></p>
+                        <p>123 Main Street</p>
+                        <p>Phnom Penh, Cambodia</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Helper function to get the correct API base URL
+        function getApiBaseUrl() {
+            // If running on port 5501 (common for live server), use the backend server
+            if (window.location.port === '5501') {
+                return 'http://localhost:5000';
+            }
+            // For other cases, return empty string to use the same origin
+            return '';
+        }
+
+        // Sample order data
+        const orderData = {
+            id: 'order_12345',
+            total: 55.97,
+            currency: 'USD',
+            items: [
+                { name: 'Product 1', price: 29.99, quantity: 1 },
+                { name: 'Product 2', price: 19.99, quantity: 1 }
+            ],
+            shipping: 5.99
+        };
+
+        let selectedPaymentMethod = null;
+        let currentOrderId = null;
+
+        // Update order total display
+        document.getElementById('order-total').textContent = `$${orderData.total.toFixed(2)}`;
+
+        // Select payment method
+        function selectPaymentMethod(method) {
+            // Remove selected class from all methods
+            document.querySelectorAll('.payment-method').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked method
+            event.currentTarget.classList.add('selected');
+            
+            // Hide all payment sections
+            document.getElementById('paypal-section').classList.add('hidden');
+            document.getElementById('khqr-section').classList.add('hidden');
+            
+            // Show selected payment section
+            if (method === 'paypal') {
+                document.getElementById('paypal-section').classList.remove('hidden');
+            } else if (method === 'khqr') {
+                document.getElementById('khqr-section').classList.remove('hidden');
+            }
+            
+            selectedPaymentMethod = method;
+        }
+
+        // Show loading state
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        // Hide loading state
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // Show notification
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type}`;
+            notification.style.display = 'block';
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 5000);
+        }
+
+        // Initiate PayPal payment
+        async function initiatePayPalPayment() {
+            if (!selectedPaymentMethod || selectedPaymentMethod !== 'paypal') {
+                showNotification('Please select PayPal as payment method', 'error');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                // Create order on backend first
+                const orderResponse = await fetch(`${getApiBaseUrl()}/api/orders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'sample_token'}`
+                    },
+                    body: JSON.stringify({
+                        shippingAddress: {
+                            address: '123 Main Street',
+                            city: 'Phnom Penh',
+                            postalCode: '12345',
+                            country: 'Cambodia'
+                        },
+                        paymentMethod: 'paypal',
+                        items: orderData.items,
+                        subtotal: orderData.total - orderData.shipping,
+                        shipping: orderData.shipping,
+                        total: orderData.total
+                    })
+                });
+
+                // Check if the response is ok before parsing JSON
+                if (!orderResponse.ok) {
+                    const errorText = await orderResponse.text();
+                    console.error('Order creation error response:', errorText);
+                    throw new Error(`HTTP error! status: ${orderResponse.status}`);
+                }
+                
+                const orderResult = await orderResponse.json();
+
+                if (!orderResult.success) {
+                    throw new Error(orderResult.message || 'Failed to create order');
+                }
+
+                currentOrderId = orderResult.order._id;
+
+                // Create PayPal payment
+                const paypalResponse = await fetch(`${getApiBaseUrl()}/api/payments/paypal/create-order`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'sample_token'}`
+                    },
+                    body: JSON.stringify({
+                        orderId: currentOrderId
+                    })
+                });
+
+                // Check if the response is ok before parsing JSON
+                if (!paypalResponse.ok) {
+                    const errorText = await paypalResponse.text();
+                    console.error('PayPal creation error response:', errorText);
+                    throw new Error(`HTTP error! status: ${paypalResponse.status}`);
+                }
+                
+                const paypalResult = await paypalResponse.json();
+
+                if (!paypalResult.success) {
+                    throw new Error(paypalResult.message || 'Failed to initiate PayPal payment');
+                }
+
+                // Redirect to PayPal
+                const approvalUrl = paypalResult.links.find(link => link.rel === 'approve').href;
+                window.location.href = approvalUrl;
+
+            } catch (error) {
+                console.error('PayPal payment error:', error);
+                showNotification(`PayPal payment failed: ${error.message}`, 'error');
+                hideLoading();
+            }
+        }
+
+        // Generate KHQR payment
+        async function generateKHQRPayment() {
+            if (!selectedPaymentMethod || selectedPaymentMethod !== 'khqr') {
+                showNotification('Please select KHQR as payment method', 'error');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                // Create order on backend first
+                const orderResponse = await fetch(`${getApiBaseUrl()}/api/orders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'sample_token'}`
+                    },
+                    body: JSON.stringify({
+                        shippingAddress: {
+                            address: '123 Main Street',
+                            city: 'Phnom Penh',
+                            postalCode: '12345',
+                            country: 'Cambodia'
+                        },
+                        paymentMethod: 'khqr',
+                        items: orderData.items,
+                        subtotal: orderData.total - orderData.shipping,
+                        shipping: orderData.shipping,
+                        total: orderData.total
+                    })
+                });
+
+                // Check if the response is ok before parsing JSON
+                if (!orderResponse.ok) {
+                    const errorText = await orderResponse.text();
+                    console.error('Order creation error response:', errorText);
+                    throw new Error(`HTTP error! status: ${orderResponse.status}`);
+                }
+                
+                const orderResult = await orderResponse.json();
+
+                if (!orderResult.success) {
+                    throw new Error(orderResult.message || 'Failed to create order');
+                }
+
+                currentOrderId = orderResult.order._id;
+
+                // Generate KHQR payment
+                const khqrResponse = await fetch(`${getApiBaseUrl()}/api/payments/khqr/create-payment`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'sample_token'}`
+                    },
+                    body: JSON.stringify({
+                        orderId: currentOrderId
+                    })
+                });
+
+                // Check if the response is ok before parsing JSON
+                if (!khqrResponse.ok) {
+                    const errorText = await khqrResponse.text();
+                    console.error('KHQR creation error response:', errorText);
+                    throw new Error(`HTTP error! status: ${khqrResponse.status}`);
+                }
+                
+                const khqrResult = await khqrResponse.json();
+
+                if (!khqrResult.success) {
+                    throw new Error(khqrResult.message || 'Failed to generate KHQR payment');
+                }
+
+                // Display QR code
+                const qrContainer = document.getElementById('khqr-code-container');
+                qrContainer.innerHTML = `<img src="${khqrResult.khqrData.qrCodeUrl}" alt="KHQR Code" style="width: 100%; height: 100%;">`;
+                
+                showNotification('KHQR code generated successfully. Scan with your banking app to pay.');
+                hideLoading();
+
+            } catch (error) {
+                console.error('KHQR payment error:', error);
+                showNotification(`KHQR payment failed: ${error.message}`, 'error');
+                hideLoading();
+            }
+        }
+
+        // Verify KHQR payment
+        async function verifyKHQRPayment() {
+            if (!currentOrderId) {
+                showNotification('No active order to verify', 'error');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                // In a real implementation, this would check with the bank's API
+                // For demo purposes, we'll simulate the verification
+                const verifyResponse = await fetch(`${getApiBaseUrl()}/api/payments/khqr/verify-payment`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'sample_token'}`
+                    },
+                    body: JSON.stringify({
+                        orderId: currentOrderId,
+                        referenceId: `khqr_ref_${Date.now()}`
+                    })
+                });
+
+                // Check if the response is ok before parsing JSON
+                if (!verifyResponse.ok) {
+                    const errorText = await verifyResponse.text();
+                    console.error('KHQR verification error response:', errorText);
+                    throw new Error(`HTTP error! status: ${verifyResponse.status}`);
+                }
+                
+                const verifyResult = await verifyResponse.json();
+
+                if (verifyResult.success) {
+                    showNotification('Payment verified successfully! Order confirmed.');
+                    // Redirect to success page
+                    setTimeout(() => {
+                        window.location.href = '/order-success';
+                    }, 2000);
+                } else {
+                    throw new Error(verifyResult.message || 'Payment verification failed');
+                }
+
+            } catch (error) {
+                console.error('KHQR verification error:', error);
+                showNotification(`Payment verification failed: ${error.message}`, 'error');
+                hideLoading();
+            }
+        }
+
+        // Handle PayPal return (this would be called when returning from PayPal)
+        function handlePayPalReturn() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const PayerID = urlParams.get('PayerID');
+
+            if (token && PayerID) {
+                // Complete PayPal payment
+                completePayPalPayment(token);
+            }
+        }
+
+        // Complete PayPal payment after return
+        async function completePayPalPayment(orderId) {
+            showLoading();
+
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/api/payments/paypal/capture/${orderId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'sample_token'}`
+                    }
+                });
+
+                // Check if the response is ok before parsing JSON
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('PayPal completion error response:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Payment completed successfully! Order confirmed.');
+                    // Redirect to success page
+                    setTimeout(() => {
+                        window.location.href = '/order-success';
+                    }, 2000);
+                } else {
+                    throw new Error(result.message || 'Payment completion failed');
+                }
+
+            } catch (error) {
+                console.error('PayPal completion error:', error);
+                showNotification(`Payment completion failed: ${error.message}`, 'error');
+                hideLoading();
+            }
+        }
+
+        // Check if this is a return from PayPal
+        window.addEventListener('load', function() {
+            handlePayPalReturn();
+        });
+    </script>
+</body>
+</html>

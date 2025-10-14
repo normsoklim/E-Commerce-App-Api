@@ -15,10 +15,15 @@ const orderSchema = new mongoose.Schema({
   status: {
     type: String,
     default: "pending",
-    enum: ["pending", "paid", "shipped", "delivered", "cancelled"],
+    enum: ["pending", "paid", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"],
   },
 
   paidAt: Date,
+  paymentStatus: {
+    type: String,
+    default: "pending",
+    enum: ["pending", "processing", "paid", "failed", "refunded", "cancelled"]
+  },
   paymentResult: {
     id: String,
     status: String,
@@ -37,8 +42,14 @@ const orderSchema = new mongoose.Schema({
     country: { type: String, required: true },
   },
 
-  // 🔑 Add this field
+  // Payment reference fields
+  paymentReference: String,
   stripeSessionId: { type: String },
+  paypalOrderId: { type: String },
+  khqrReference: { type: String },
+  khqrCode: { type: String },
+  khqrAmount: { type: Number },
+  khqrCurrency: { type: String },
 }, { timestamps: true });
 
 export default mongoose.model("Order", orderSchema);

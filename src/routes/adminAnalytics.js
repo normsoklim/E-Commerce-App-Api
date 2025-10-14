@@ -6,6 +6,81 @@ import { protect, admin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+// In-memory storage for real-time data (in production, use Redis or similar)
+let realTimeData = {
+  totalOrders: 0,
+  totalRevenue: 0,
+  activeUsers: 0,
+  recentOrders: [],
+  lastUpdated: new Date()
+};
+
+// Function to update real-time data
+export const updateRealTimeData = async () => {
+  try {
+    const [orderStats, recentOrders] = await Promise.all([
+      Order.aggregate([
+        { $match: { status: { $in: ["paid", "confirmed"] } } },
+        {
+          $group: {
+            _id: null,
+            totalOrders: { $sum: 1 },
+            totalRevenue: { $sum: "$total" }
+          }
+        }
+      ]),
+      Order.find({ status: { $in: ["paid", "confirmed"] } })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select("total status user createdAt")
+    ]);
+    
+    realTimeData.totalOrders = orderStats[0]?.totalOrders || 0;
+    realTimeData.totalRevenue = orderStats[0]?.totalRevenue || 0;
+    realTimeData.recentOrders = recentOrders;
+    realTimeData.lastUpdated = new Date();
+    
+    // Emit real-time update to connected clients if WebSocket is available
+    if (global.io) {
+      global.io.emit('admin-analytics-update', realTimeData);
+    }
+  } catch (error) {
+    console.error('Error updating real-time data:', error);
+  }
+};
+
+// Initialize real-time data after a short delay to ensure DB connection is ready
+setTimeout(updateRealTimeData, 1000);
+
+// WebSocket server for real-time updates (if available)
+let wss = null;
+// WebSocket server is already available via global.io which is set in server.js
+
+// Get real-time dashboard data
+router.get("/realtime", protect, admin, async (req, res) => {
+  try {
+    // Update data if it's been more than 30 seconds
+    if (Date.now() - realTimeData.lastUpdated.getTime() > 30000) {
+      await updateRealTimeData();
+    }
+    res.json(realTimeData);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Endpoint to trigger real-time data update
+router.post("/realtime/refresh", protect, admin, async (req, res) => {
+  try {
+    await updateRealTimeData();
+    res.json({ success: true, message: "Real-time data refreshed", data: realTimeData });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // Total sales by day
 router.get("/sales/daily", protect, admin, async (req, res) => {
   try {

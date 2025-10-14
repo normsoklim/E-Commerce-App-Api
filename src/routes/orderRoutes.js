@@ -6,9 +6,12 @@ import Order from "../models/Order.js";
 import Cart from "../models/Cart.js";
 import Product from "../models/Product.js";
 import User from "../models/User.js";
+import Payment from "../models/Payment.js";
 import { protect, admin } from "../middleware/authMiddleware.js";
 import { sendNotification } from "../utils/telegram.js";
 import { formatOrderNotification } from "../utils/formatters.js";
+import KHQRGenerator from "../utils/khqr.js";
+import { createPayPalOrder } from "../config/paypal.js";
 
 dotenv.config();
 const router = express.Router();
@@ -105,6 +108,17 @@ router.post("/", protect, async (req, res) => {
     await order.save();
     await order.populate('user', 'name email');
     await order.populate('items.product', 'name price images');
+
+    // Emit real-time update to connected clients if WebSocket is available
+    if (global.io) {
+      global.io.emit('new-order', {
+        orderId: order._id,
+        total: order.total,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        createdAt: order.createdAt
+      });
+    }
 
     // Clear cart if order was created from cart
     if (!items || items.length === 0) {
@@ -285,6 +299,17 @@ router.put("/:id/verify-payment", protect, async (req, res) => {
 
       await order.save();
 
+      // Emit real-time update to connected clients if WebSocket is available
+      if (global.io) {
+        global.io.emit('order-status-update', {
+          orderId: order._id,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          total: order.total,
+          paidAt: order.paidAt
+        });
+      }
+
       // Format notification message
       const message = formatOrderNotification(order, order.user.email, "Payment Verified");
 
@@ -365,6 +390,17 @@ router.post("/webhook/khqr", express.json(), async (req, res) => {
         };
         await order.save();
 
+        // Emit real-time update to connected clients if WebSocket is available
+        if (global.io) {
+          global.io.emit('order-status-update', {
+            orderId: order._id,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            total: order.total,
+            paidAt: order.paidAt
+          });
+        }
+
         // Send notifications
         const message = formatOrderNotification(order, order.user.email, "KHQR Payment Completed");
 
@@ -416,6 +452,17 @@ router.post("/webhook/paypal", express.json(), async (req, res) => {
         };
         await order.save();
 
+        // Emit real-time update to connected clients if WebSocket is available
+        if (global.io) {
+          global.io.emit('order-status-update', {
+            orderId: order._id,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            total: order.total,
+            paidAt: order.paidAt
+          });
+        }
+
         // Send notifications
         const message = formatOrderNotification(order, order.user.email, "PayPal Payment Completed");
 
@@ -443,93 +490,134 @@ router.post("/webhook/paypal", express.json(), async (req, res) => {
   }
 });
 
-// ------------------- HELPER FUNCTIONS -------------------
+// Define helper functions before they are used in the main route
+
 async function generateKHQRPayment(order) {
-  // Generate KHQR payment data
-  // This would integrate with your KHQR service
-  const paymentReference = `KHQR_${order._id}_${Date.now()}`;
+  try {
+    // Generate KHQR payment data using the KHQR utility
+    const khqrData = await KHQRGenerator.generateKHQRPayment(order);
 
-  // Update order with payment reference
-  order.paymentReference = paymentReference;
-  await order.save();
+    // Update order with KHQR information
+    order.khqrReference = khqrData.reference;
+    order.khqrCode = khqrData.qrCodeUrl;
+    order.khqrAmount = order.total;
+    order.khqrCurrency = khqrData.currency;
+    await order.save();
 
-  return {
-    paymentReference,
-    qrCodeData: `https://api.khqr.com/pay?ref=${paymentReference}&amount=${order.total}`,
-    paymentUrl: `khqr://pay?ref=${paymentReference}&amount=${order.total}`,
-    merchantInfo: {
-      name: process.env.KHQR_MERCHANT_NAME || "Your Store",
-      account: process.env.KHQR_ACCOUNT_NUMBER || "123456789"
-    }
-  };
+    // Create payment record
+    const payment = new Payment({
+      orderId: order._id,
+      paymentMethod: 'khqr',
+      amount: order.total,
+      currency: khqrData.currency,
+      status: 'pending',
+      gateway: 'khqr',
+      paymentReference: khqrData.reference,
+      paymentData: khqrData,
+      metadata: {
+        bank: khqrData.merchantInfo.bank
+      }
+    });
+    await payment.save();
+
+    return khqrData;
+  } catch (error) {
+    console.error("KHQR payment generation error:", error);
+    throw error;
+  }
 }
 
 async function generatePayPalPayment(order) {
-  // Generate PayPal payment
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    line_items: order.items.map(item => ({
-      price_data: {
-        currency: "usd",
-        product_data: {
-          name: item.product?.name || item.name
-        },
-        unit_amount: Math.round(item.price * 100),
-      },
-      quantity: item.quantity,
-    })),
-    mode: "payment",
-    success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order._id}`,
-    cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
-    customer_email: order.user.email,
-    metadata: {
-      orderId: order._id.toString(),
-      paymentMethod: 'paypal'
-    },
-  });
+  try {
+    // Create PayPal order using the PayPal SDK
+    const paypalOrder = await createPayPalOrder({
+      _id: order._id,
+      total: order.total,
+      currency: 'USD'
+    });
 
-  order.stripeSessionId = session.id;
-  await order.save();
+    // Update order with PayPal order ID
+    order.paypalOrderId = paypalOrder.id;
+    await order.save();
 
-  return {
-    sessionId: session.id,
-    checkoutUrl: session.url,
-    paymentType: 'paypal'
-  };
+    // Create payment record
+    const payment = new Payment({
+      orderId: order._id,
+      paymentMethod: 'paypal',
+      amount: order.total,
+      currency: 'USD',
+      status: 'pending',
+      gateway: 'paypal',
+      gatewayPaymentId: paypalOrder.id,
+      metadata: {
+        orderData: paypalOrder
+      }
+    });
+    await payment.save();
+
+    return {
+      orderId: paypalOrder.id,
+      links: paypalOrder.links,
+      paymentType: 'paypal'
+    };
+  } catch (error) {
+    console.error("PayPal payment generation error:", error);
+    throw error;
+  }
 }
 
 async function generateStripePayment(order) {
-  // Generate Stripe payment
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    line_items: order.items.map(item => ({
-      price_data: {
-        currency: "usd",
-        product_data: {
-          name: item.product?.name || item.name
+  try {
+    // Generate Stripe payment using existing implementation
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: order.items.map(item => ({
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: item.product?.name || item.name
+          },
+          unit_amount: Math.round(item.price * 100),
         },
-        unit_amount: Math.round(item.price * 100),
+        quantity: item.quantity,
+      })),
+      mode: "payment",
+      success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order._id}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
+      customer_email: order.user.email,
+      metadata: {
+        orderId: order._id.toString(),
+        paymentMethod: 'stripe'
       },
-      quantity: item.quantity,
-    })),
-    mode: "payment",
-    success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order._id}`,
-    cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
-    customer_email: order.user.email,
-    metadata: {
-      orderId: order._id.toString(),
-      paymentMethod: 'stripe'
-    },
-  });
+    });
 
-  order.stripeSessionId = session.id;
-  await order.save();
+    order.stripeSessionId = session.id;
+    await order.save();
 
-  return {
-    sessionId: session.id,
-    checkoutUrl: session.url,
-    paymentType: 'stripe'
-  };
+    // Create payment record
+    const payment = new Payment({
+      orderId: order._id,
+      paymentMethod: 'stripe',
+      amount: order.total,
+      currency: 'USD',
+      status: 'pending',
+      gateway: 'stripe',
+      gatewayPaymentId: session.id,
+      metadata: {
+        checkoutSession: session
+      }
+    });
+    await payment.save();
+
+    return {
+      sessionId: session.id,
+      checkoutUrl: session.url,
+      paymentType: 'stripe'
+    };
+  } catch (error) {
+    console.error("Stripe payment generation error:", error);
+    throw error;
+  }
 }
 
 function verifyKHQRWebhookSignature(req) {
@@ -537,6 +625,8 @@ function verifyKHQRWebhookSignature(req) {
   // This would use KHQR's specific verification method
   return true; // Placeholder
 }
+
+// ------------------- HELPER FUNCTIONS -------------------
 
 // ------------------- GET USER ORDERS -------------------
 router.get("/user/orders", protect, async (req, res) => {

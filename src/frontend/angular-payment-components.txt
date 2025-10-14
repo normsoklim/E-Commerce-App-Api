@@ -1,0 +1,658 @@
+// This file shows the Angular component structure for the payment system
+// In a real Angular project, these would be separate files
+
+/*
+ * PAYMENT METHOD SELECTION COMPONENT
+ */
+
+// payment-method.component.ts
+import { Component, OnInit, Output, EventEmitter } from '@angular/core';
+
+@Component({
+  selector: 'app-payment-method',
+  template: `
+    <div class="payment-methods">
+      <div 
+        class="payment-method" 
+        [class.selected]="selectedMethod === 'paypal'"
+        (click)="selectMethod('paypal')"
+      >
+        <img src="assets/images/paypal-logo.png" alt="PayPal">
+        <h3>PayPal</h3>
+        <p>Credit/Debit Cards</p>
+      </div>
+      
+      <div 
+        class="payment-method" 
+        [class.selected]="selectedMethod === 'khqr'"
+        (click)="selectMethod('khqr')"
+      >
+        <img src="assets/images/khqr-logo.png" alt="KHQR">
+        <h3>KHQR</h3>
+        <p>ABA, ACLEDA, Wing</p>
+      </div>
+    </div>
+    
+    <div class="payment-details" *ngIf="selectedMethod">
+      <app-paypal-payment 
+        *ngIf="selectedMethod === 'paypal'"
+        (paymentCompleted)="onPaymentCompleted($event)">
+      </app-paypal-payment>
+      
+      <app-khqr-payment 
+        *ngIf="selectedMethod === 'khqr'"
+        (paymentCompleted)="onPaymentCompleted($event)">
+      </app-khqr-payment>
+    </div>
+  `,
+  styles: [`
+    .payment-methods {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    
+    .payment-method {
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .payment-method:hover {
+      border-color: #3498db;
+      transform: translateY(-2px);
+    }
+    
+    .payment-method.selected {
+      border-color: #3498db;
+      background-color: #e3f2fd;
+    }
+    
+    .payment-method img {
+      width: 60px;
+      height: 40px;
+      object-fit: contain;
+      margin-bottom: 10px;
+    }
+  `]
+})
+export class PaymentMethodComponent implements OnInit {
+  @Output() paymentMethodSelected = new EventEmitter<string>();
+  @Output() paymentCompleted = new EventEmitter<any>();
+  
+  selectedMethod: string | null = null;
+
+  ngOnInit() {}
+
+  selectMethod(method: string) {
+    this.selectedMethod = method;
+    this.paymentMethodSelected.emit(method);
+  }
+
+  onPaymentCompleted(paymentData: any) {
+    this.paymentCompleted.emit(paymentData);
+  }
+}
+
+/*
+ * PAYPAL PAYMENT COMPONENT
+ */
+
+// paypal-payment.component.ts
+import { Component, OnInit, Output, EventEmitter } from '@angular/core';
+import { PaymentService } from '../services/payment.service';
+
+declare var paypal: any;
+
+@Component({
+  selector: 'app-paypal-payment',
+  template: `
+    <div class="paypal-container">
+      <h3>PayPal Payment</h3>
+      <p>Secure payment with PayPal. You will be redirected to complete the payment.</p>
+      
+      <div id="paypal-button-container"></div>
+      
+      <div *ngIf="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Processing your payment...</p>
+      </div>
+      
+      <div *ngIf="error" class="error">{{ error }}</div>
+    </div>
+  `,
+  styles: [`
+    .paypal-container {
+      padding: 20px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .error {
+      color: #e74c3c;
+      padding: 10px;
+      background: #fadbd8;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+  `]
+})
+export class PaypalPaymentComponent implements OnInit {
+  @Output() paymentCompleted = new EventEmitter<any>();
+  
+  loading = false;
+  error: string | null = null;
+  orderId: string | null = null;
+
+  constructor(private paymentService: PaymentService) {}
+
+  ngOnInit() {
+    this.createOrder();
+  }
+
+  async createOrder() {
+    this.loading = true;
+    this.error = null;
+    
+    try {
+      // Create order on backend
+      const orderResponse = await this.paymentService.createOrder({
+        paymentMethod: 'paypal',
+        // ... other order data
+      }).toPromise();
+      
+      this.orderId = orderResponse.order._id;
+      
+      // Initialize PayPal button
+      this.initPayPalButton();
+    } catch (err) {
+      this.error = 'Failed to initialize payment: ' + err.message;
+      this.loading = false;
+    }
+  }
+
+  initPayPalButton() {
+    paypal.Buttons({
+      createOrder: (data, actions) => {
+        return this.paymentService.createPayPalOrder({
+          orderId: this.orderId
+        }).toPromise().then(order => {
+          return order.orderId;
+        });
+      },
+      onApprove: (data, actions) => {
+        return this.paymentService.capturePayPalPayment(data.orderID).toPromise()
+          .then(details => {
+            this.paymentCompleted.emit(details);
+            return actions.order.capture();
+          });
+      },
+      onError: (err) => {
+        this.error = 'Payment failed: ' + err.message;
+        this.loading = false;
+      }
+    }).render('#paypal-button-container');
+  }
+}
+
+/*
+ * KHQR PAYMENT COMPONENT
+ */
+
+// khqr-payment.component.ts
+import { Component, OnInit, Output, EventEmitter } from '@angular/core';
+import { PaymentService } from '../services/payment.service';
+
+@Component({
+  selector: 'app-khqr-payment',
+  template: `
+    <div class="khqr-container">
+      <h3>KHQR Payment</h3>
+      <p>Scan the QR code with your mobile banking app to complete payment.</p>
+      
+      <div class="khqr-display">
+        <div class="khqr-code" *ngIf="khqrCode">
+          <img [src]="khqrCode" alt="KHQR Code">
+        </div>
+        <div *ngIf="!khqrCode" class="placeholder">
+          <p>QR Code will appear here after generation</p>
+        </div>
+        
+        <button 
+          class="btn btn-khqr" 
+          (click)="generateKHQR()"
+          [disabled]="loading"
+        >
+          {{ loading ? 'Generating...' : 'Generate KHQR Code' }}
+        </button>
+        
+        <div class="khqr-instructions">
+          <h4>How to pay with KHQR:</h4>
+          <ol>
+            <li>Click "Generate KHQR Code" above</li>
+            <li>Open your mobile banking app (ABA, ACLEDA, Wing, etc.)</li>
+            <li>Use the QR scanner to scan the code</li>
+            <li>Confirm and complete the payment</li>
+            <li>Return here to verify payment</li>
+          </ol>
+        </div>
+        
+        <button 
+          class="btn" 
+          (click)="verifyPayment()"
+          [disabled]="!orderId"
+          style="margin-top: 15px;"
+        >
+          Verify Payment
+        </button>
+      </div>
+      
+      <div *ngIf="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Processing...</p>
+      </div>
+      
+      <div *ngIf="error" class="error">{{ error }}</div>
+    </div>
+  `,
+  styles: [`
+    .khqr-container {
+      padding: 20px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    
+    .khqr-display {
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .khqr-code img {
+      width: 200px;
+      height: 200px;
+      margin: 0 auto 20px;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+    }
+    
+    .placeholder {
+      width: 200px;
+      height: 200px;
+      margin: 0 auto 20px;
+      background: #f8f9fa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+    }
+    
+    .khqr-instructions {
+      background: #e8f4fd;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      text-align: left;
+    }
+    
+    .btn {
+      background: #3498db;
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      transition: background 0.3s ease;
+    }
+    
+    .btn-khqr {
+      background: #00b4a0;
+    }
+    
+    .btn-khqr:hover {
+      background: #009a87;
+    }
+    
+    .btn:disabled {
+      background: #bdc3c7;
+      cursor: not-allowed;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .error {
+      color: #e74c3c;
+      padding: 10px;
+      background: #fadbd8;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+  `]
+})
+export class KhqrPaymentComponent implements OnInit {
+  @Output() paymentCompleted = new EventEmitter<any>();
+  
+  loading = false;
+  error: string | null = null;
+  orderId: string | null = null;
+  khqrCode: string | null = null;
+
+  constructor(private paymentService: PaymentService) {}
+
+  ngOnInit() {}
+
+  async generateKHQR() {
+    this.loading = true;
+    this.error = null;
+    
+    try {
+      // Create order on backend
+      const orderResponse = await this.paymentService.createOrder({
+        paymentMethod: 'khqr',
+        // ... other order data
+      }).toPromise();
+      
+      this.orderId = orderResponse.order._id;
+      
+      // Generate KHQR payment
+      const khqrResponse = await this.paymentService.createKHQRPayment({
+        orderId: this.orderId
+      }).toPromise();
+      
+      this.khqrCode = khqrResponse.khqrData.qrCodeUrl;
+      this.loading = false;
+    } catch (err) {
+      this.error = 'Failed to generate KHQR: ' + err.message;
+      this.loading = false;
+    }
+  }
+
+  async verifyPayment() {
+    this.loading = true;
+    this.error = null;
+    
+    try {
+      const verifyResponse = await this.paymentService.verifyKHQRPayment({
+        orderId: this.orderId,
+        referenceId: `khqr_ref_${Date.now()}`
+      }).toPromise();
+      
+      if (verifyResponse.success) {
+        this.paymentCompleted.emit(verifyResponse);
+      } else {
+        throw new Error(verifyResponse.message);
+      }
+    } catch (err) {
+      this.error = 'Payment verification failed: ' + err.message;
+    } finally {
+      this.loading = false;
+    }
+  }
+}
+
+/*
+ * PAYMENT SERVICE
+ */
+
+// payment.service.ts
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class PaymentService {
+  private apiUrl = '/api';
+
+  constructor(private http: HttpClient) {}
+
+  // Create order
+  createOrder(orderData: any): Observable<any> {
+    return this.http.post(`${this.apiUrl}/orders`, orderData);
+  }
+
+  // Create PayPal order
+  createPayPalOrder(orderData: any): Observable<any> {
+    return this.http.post(`${this.apiUrl}/payments/paypal/create-order`, orderData);
+  }
+
+  // Capture PayPal payment
+  capturePayPalPayment(orderId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/payments/paypal/capture/${orderId}`, {});
+  }
+
+  // Create KHQR payment
+  createKHQRPayment(paymentData: any): Observable<any> {
+    return this.http.post(`${this.apiUrl}/payments/khqr/create-payment`, paymentData);
+  }
+
+  // Verify KHQR payment
+  verifyKHQRPayment(verifyData: any): Observable<any> {
+    return this.http.post(`${this.apiUrl}/payments/khqr/verify-payment`, verifyData);
+  }
+
+  // Get payment status
+  getPaymentStatus(paymentId: string): Observable<any> {
+    return this.http.get(`${this.apiUrl}/payments/${paymentId}/status`);
+  }
+
+  // Refund payment
+  refundPayment(paymentId: string, reason?: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/payments/${paymentId}/refund`, { reason });
+  }
+}
+
+/*
+ * ORDER SUMMARY COMPONENT
+ */
+
+// order-summary.component.ts
+import { Component, Input } from '@angular/core';
+
+@Component({
+  selector: 'app-order-summary',
+  template: `
+    <div class="order-summary">
+      <h3>Order Summary</h3>
+      
+      <div 
+        class="order-item" 
+        *ngFor="let item of order.items"
+      >
+        <span>{{ item.name }} x{{ item.quantity }}</span>
+        <span>${{ (item.price * item.quantity).toFixed(2) }}</span>
+      </div>
+      
+      <div class="order-summary-item">
+        <span>Subtotal</span>
+        <span>${{ subtotal.toFixed(2) }}</span>
+      </div>
+      
+      <div class="order-summary-item">
+        <span>Shipping</span>
+        <span>${{ order.shipping.toFixed(2) }}</span>
+      </div>
+      
+      <div class="order-summary-item total">
+        <span>Total</span>
+        <span>${{ order.total.toFixed(2) }}</span>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .order-summary {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .order-item, .order-summary-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .total {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #e74c3c;
+      margin-top: 10px;
+    }
+  `]
+})
+export class OrderSummaryComponent {
+  @Input() order: any = {};
+  
+  get subtotal() {
+    return this.order.total - this.order.shipping;
+  }
+}
+
+/*
+ * CHECKOUT PAGE COMPONENT
+ */
+
+// checkout.component.ts
+import { Component, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
+import { PaymentService } from '../services/payment.service';
+
+@Component({
+  selector: 'app-checkout',
+  template: `
+    <div class="checkout-container">
+      <div class="left-column">
+        <div class="card">
+          <h2>Payment Method</h2>
+          <app-payment-method 
+            (paymentCompleted)="onPaymentCompleted($event)">
+          </app-payment-method>
+        </div>
+      </div>
+      
+      <div class="right-column">
+        <app-order-summary [order]="order"></app-order-summary>
+        
+        <div class="card" style="margin-top: 20px;">
+          <h3>Shipping Information</h3>
+          <p><strong>{{ shippingAddress.name }}</strong></p>
+          <p>{{ shippingAddress.address }}</p>
+          <p>{{ shippingAddress.city }}, {{ shippingAddress.country }}</p>
+        </div>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .checkout-container {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 30px;
+      margin-top: 20px;
+    }
+    
+    .card {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+    }
+    
+    @media (max-width: 768px) {
+      .checkout-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  `]
+})
+export class CheckoutComponent implements OnInit {
+  order: any = {};
+  shippingAddress: any = {};
+
+  constructor(
+    private paymentService: PaymentService,
+    private router: Router
+  ) {}
+
+  ngOnInit() {
+    // Load order data (from cart service or route params)
+    this.loadOrderData();
+  }
+
+  loadOrderData() {
+    // In a real app, this would come from a service or route params
+    this.order = {
+      items: [
+        { name: 'Product 1', price: 29.99, quantity: 1 },
+        { name: 'Product 2', price: 19.99, quantity: 1 }
+      ],
+      shipping: 5.99,
+      total: 55.97
+    };
+    
+    this.shippingAddress = {
+      name: 'John Doe',
+      address: '123 Main Street',
+      city: 'Phnom Penh',
+      country: 'Cambodia'
+    };
+  }
+
+  onPaymentCompleted(paymentData: any) {
+    // Handle successful payment
+    console.log('Payment completed:', paymentData);
+    
+    // Redirect to success page
+    this.router.navigate(['/order-success'], {
+      queryParams: { orderId: paymentData.order._id }
+    });
+  }
+}

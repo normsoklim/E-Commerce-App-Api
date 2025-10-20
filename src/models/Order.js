@@ -40,6 +40,22 @@ const orderSchema = new mongoose.Schema({
     city: { type: String, required: true },
     postalCode: { type: String, required: true },
     country: { type: String, required: true },
+    coordinates: {
+      lat: { type: Number },
+      lng: { type: Number }
+    }
+  },
+
+  // Location tracking for delivery
+  deliveryLocation: {
+    current: {
+      lat: { type: Number },
+      lng: { type: Number }
+    },
+    destination: {
+      lat: { type: Number },
+      lng: { type: Number }
+    }
   },
 
   // Payment reference fields

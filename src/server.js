@@ -19,6 +19,7 @@ import carrierWebhook from "./routes/carrierWebhook.js";
 import dealRoutes from "./routes/dealRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
+import mapRoutes from "./routes/mapRouters.js";
 
 dotenv.config();
 connectDB();
@@ -73,6 +74,9 @@ app.use('/api/reports', reportRoutes);
 
 // Use Notification routes
 app.use('/api/notifications', notificationRoutes);
+
+// Use Map routes
+app.use('/api/maps', mapRoutes);
 
 app.use("/uploads", express.static("uploads"));
 

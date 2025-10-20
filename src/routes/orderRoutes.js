@@ -12,6 +12,7 @@ import { sendNotification } from "../utils/telegram.js";
 import { formatOrderNotification } from "../utils/formatters.js";
 import KHQRGenerator from "../utils/khqr.js";
 import { createPayPalOrder } from "../config/paypal.js";
+import { geocodeAddress } from "../utils/googleMaps.js";
 
 dotenv.config();
 const router = express.Router();
@@ -91,6 +92,21 @@ router.post("/", protect, async (req, res) => {
       });
     }
 
+    // Geocode the shipping address to get coordinates
+    let shippingAddressWithCoordinates = { ...shippingAddress };
+    try {
+      const geocodedAddress = await geocodeAddress(
+        `${shippingAddress.address}, ${shippingAddress.city}, ${shippingAddress.postalCode}, ${shippingAddress.country}`
+      );
+      shippingAddressWithCoordinates.coordinates = {
+        lat: geocodedAddress.lat,
+        lng: geocodedAddress.lng
+      };
+    } catch (geocodeError) {
+      console.warn("Failed to geocode shipping address:", geocodeError.message);
+      // Continue with order creation even if geocoding fails
+    }
+
     // Create the order
     const order = new Order({
       user: req.user._id,
@@ -100,7 +116,10 @@ router.post("/", protect, async (req, res) => {
       tax: tax || 0,
       total: calculatedTotal,
       paymentMethod,
-      shippingAddress,
+      shippingAddress: shippingAddressWithCoordinates,
+      deliveryLocation: shippingAddressWithCoordinates.coordinates ? {
+        destination: shippingAddressWithCoordinates.coordinates
+      } : undefined,
       status: paymentMethod === 'cod' ? 'confirmed' : 'pending', // COD orders are confirmed immediately
       paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending'
     });

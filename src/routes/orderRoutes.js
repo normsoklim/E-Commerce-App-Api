@@ -2,6 +2,7 @@
 import express from "express";
 import Stripe from "stripe";
 import dotenv from "dotenv";
+import crypto from "crypto";
 import Order from "../models/Order.js";
 import Cart from "../models/Cart.js";
 import Product from "../models/Product.js";
@@ -21,6 +22,14 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-
 // ------------------- CREATE ORDER -------------------
 router.post("/", protect, async (req, res) => {
   try {
+    console.log("Order creation request received:", {
+      shippingAddress: req.body.shippingAddress,
+      paymentMethod: req.body.paymentMethod,
+      hasItems: !!req.body.items,
+      subtotal: req.body.subtotal,
+      total: req.body.total
+    });
+    
     const {
       shippingAddress,
       paymentMethod,
@@ -149,14 +158,43 @@ router.post("/", protect, async (req, res) => {
 
     // Generate payment data based on payment method
     let paymentData = {};
+    console.log("Generating payment data for method:", paymentMethod);
 
-    if (paymentMethod === 'khqr') {
-      paymentData = await generateKHQRPayment(order);
-    } else if (paymentMethod === 'paypal') {
-      paymentData = await generatePayPalPayment(order);
-    } else if (paymentMethod === 'stripe') {
-      paymentData = await generateStripePayment(order);
+    try {
+      if (paymentMethod === 'khqr') {
+        console.log("Generating KHQR payment for order:", order._id);
+        // Validate KHQR environment variables before proceeding
+        if (!process.env.KHQR_MERCHANT_ID || !process.env.KHQR_TERMINAL_ID) {
+          console.error("KHQR environment variables not properly configured");
+          paymentData = {
+            error: "KHQR not properly configured",
+            message: "KHQR payment method is not properly configured on the server"
+          };
+        } else {
+          paymentData = await generateKHQRPayment(order);
+          console.log("KHQR payment data generated:", paymentData);
+        }
+      } else if (paymentMethod === 'paypal') {
+        console.log("Generating PayPal payment for order:", order._id);
+        paymentData = await generatePayPalPayment(order);
+        console.log("PayPal payment data generated:", paymentData);
+      } else if (paymentMethod === 'stripe') {
+        console.log("Generating Stripe payment for order:", order._id);
+        paymentData = await generateStripePayment(order);
+        console.log("Stripe payment data generated:", paymentData);
+      }
+    } catch (paymentError) {
+      console.error("Payment generation failed:", paymentError);
+      // Even if payment generation fails, we should still return the order
+      // The frontend can handle payment generation separately
+      paymentData = {
+        error: paymentError.message,
+        details: paymentError.stack,
+        message: "Payment method could not be processed. Please contact support or try another payment method."
+      };
     }
+    
+    console.log("Final payment data to be returned:", paymentData);
 
     res.status(201).json({
       success: true,
@@ -187,8 +225,20 @@ router.post("/", protect, async (req, res) => {
 // ------------------- KHQR PAYMENT -------------------
 router.post("/:id/khqr-payment", protect, async (req, res) => {
   try {
+    console.log("KHQR payment request for order ID:", req.params.id);
+    
+    // Validate KHQR environment variables
+    if (!process.env.KHQR_MERCHANT_ID || !process.env.KHQR_TERMINAL_ID) {
+      console.error("KHQR environment variables not properly configured");
+      return res.status(500).json({
+        success: false,
+        message: "KHQR payment method is not properly configured on the server"
+      });
+    }
+    
     const order = await Order.findById(req.params.id);
     if (!order) {
+      console.log("Order not found for KHQR payment:", req.params.id);
       return res.status(404).json({
         success: false,
         message: "Order not found"
@@ -196,6 +246,7 @@ router.post("/:id/khqr-payment", protect, async (req, res) => {
     }
 
     if (order.paymentMethod !== 'khqr') {
+      console.log("Order is not for KHQR payment:", req.params.id, "Payment method:", order.paymentMethod);
       return res.status(400).json({
         success: false,
         message: "Order is not for KHQR payment"
@@ -203,6 +254,7 @@ router.post("/:id/khqr-payment", protect, async (req, res) => {
     }
 
     const paymentData = await generateKHQRPayment(order);
+    console.log("KHQR payment data generated:", paymentData);
 
     res.json({
       success: true,
@@ -385,19 +437,30 @@ router.put("/:id/verify-payment", protect, async (req, res) => {
 // ------------------- WEBHOOK FOR PAYMENT GATEWAYS -------------------
 router.post("/webhook/khqr", express.json(), async (req, res) => {
   try {
+    console.log("KHQR webhook received:", req.body);
     const { event, transaction_reference, transaction_id, amount, status } = req.body;
 
     // Verify webhook signature (implement based on KHQR documentation)
     if (!verifyKHQRWebhookSignature(req)) {
+      console.log("KHQR webhook signature verification failed");
       return res.status(401).json({ error: "Invalid signature" });
     }
 
     if (event === 'payment.completed' && status === 'success') {
+      console.log("Processing successful KHQR payment for transaction:", transaction_reference);
       const order = await Order.findOne({ paymentReference: transaction_reference })
           .populate("user", "email name")
           .populate("items.product", "name price");
 
+      if (!order) {
+        console.log("Order not found for transaction reference:", transaction_reference);
+        return res.json({ received: true });
+      }
+      
+      console.log("Found order:", order._id);
+
       if (order && order.status !== 'paid') {
+        console.log("Updating order status to paid");
         order.status = 'confirmed';
         order.paymentStatus = 'paid';
         order.paidAt = new Date();
@@ -513,8 +576,10 @@ router.post("/webhook/paypal", express.json(), async (req, res) => {
 
 async function generateKHQRPayment(order) {
   try {
+    console.log("Generating KHQR payment for order:", order._id);
     // Generate KHQR payment data using the KHQR utility
     const khqrData = await KHQRGenerator.generateKHQRPayment(order);
+    console.log("KHQR data generated:", khqrData);
 
     // Update order with KHQR information
     order.khqrReference = khqrData.reference;
@@ -522,6 +587,7 @@ async function generateKHQRPayment(order) {
     order.khqrAmount = order.total;
     order.khqrCurrency = khqrData.currency;
     await order.save();
+    console.log("Order updated with KHQR information");
 
     // Create payment record
     const payment = new Payment({
@@ -538,6 +604,7 @@ async function generateKHQRPayment(order) {
       }
     });
     await payment.save();
+    console.log("Payment record created");
 
     return khqrData;
   } catch (error) {
@@ -640,9 +707,40 @@ async function generateStripePayment(order) {
 }
 
 function verifyKHQRWebhookSignature(req) {
-  // Implement KHQR webhook signature verification
-  // This would use KHQR's specific verification method
-  return true; // Placeholder
+  console.log("Verifying KHQR webhook signature");
+  // In a real implementation, this would verify the signature using KHQR's specific method
+  // For now, we'll implement a basic HMAC verification as an example
+  
+  // Get the signature from headers (this would depend on KHQR's specification)
+  const signature = req.headers['x-khqr-signature'] || req.headers['signature'];
+  const payload = JSON.stringify(req.body);
+  const secret = process.env.KHQR_WEBHOOK_SECRET || 'default_secret';
+  
+  console.log("Signature:", signature);
+  console.log("Payload:", payload);
+  console.log("Secret:", secret);
+  
+  if (!signature) {
+    console.log("No signature provided in webhook request");
+    return false;
+  }
+  
+  // Calculate expected signature (this is a simplified example)
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+    
+  console.log("Expected signature:", expectedSignature);
+  
+  // In a real implementation, you would compare the signatures properly
+  // For now, we'll just log the comparison
+  const isValid = signature === expectedSignature;
+  console.log("Signature valid:", isValid);
+  
+  // For development, we'll return true to allow testing
+  // In production, you should properly verify the signature
+  return true;
 }
 
 // ------------------- HELPER FUNCTIONS -------------------

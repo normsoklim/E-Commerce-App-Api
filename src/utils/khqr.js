@@ -20,6 +20,7 @@ class KHQRGenerator {
 
   // Generate KHQR code for ABA Bank
   generateABAKHQR(orderId, amount, currency = '896', merchantName = 'Your Store', city = 'Phnom Penh') {
+    console.log("Generating ABA KHQR for order:", orderId, "amount:", amount);
     // ABA Bank specific format
     const payload = this.buildPayload({
       orderId,
@@ -29,6 +30,7 @@ class KHQRGenerator {
       city,
       bankCode: 'ABA'
     });
+    console.log("ABA KHQR payload:", payload);
     
     return payload;
   }
@@ -63,15 +65,19 @@ class KHQRGenerator {
 
   // Build generic KHQR payload
   buildPayload({ orderId, amount, currency, merchantName, city, bankCode }) {
+    console.log("Building KHQR payload for order:", orderId, "amount:", amount, "currency:", currency);
     // Create a copy of the template
     const payload = { ...this.payloadTemplate };
+    console.log("Initial payload template:", payload);
     
     // Add merchant information
-    payload['29'] = this.buildMerchantAccountInfo({
+    const merchantInfo = this.buildMerchantAccountInfo({
       gateway: bankCode,
       merchantId: process.env.KHQR_MERCHANT_ID || 'MERCHANT123',
       terminalId: process.env.KHQR_TERMINAL_ID || 'TERMINAL123'
     });
+    console.log("Merchant info:", merchantInfo);
+    payload['29'] = merchantInfo;
     
     // Add transaction amount if specified (for dynamic QR)
     if (amount) {
@@ -93,8 +99,12 @@ class KHQRGenerator {
     // Add CRC (Cyclic Redundancy Check - simplified)
     payload['63'] = '0000'; // This should be calculated properly in production
     
+    console.log("Final payload before string conversion:", payload);
+    
     // Build the complete payload string
-    return this.buildPayloadString(payload);
+    const result = this.buildPayloadString(payload);
+    console.log("Final payload string:", result);
+    return result;
   }
 
   // Build merchant account information field
@@ -199,6 +209,7 @@ class KHQRGenerator {
   // Generate QR code image from KHQR payload
   async generateQRCode(khqrPayload, options = {}) {
     try {
+      console.log("Generating QR code for payload:", khqrPayload);
       const qrCodeUrl = await QRCode.toDataURL(khqrPayload, {
         width: options.width || 300,
         margin: options.margin || 2,
@@ -207,15 +218,36 @@ class KHQRGenerator {
           light: options.lightColor || '#ffffff'
         }
       });
+      console.log("QR code generated successfully");
       
       return qrCodeUrl;
     } catch (error) {
+      console.error("Failed to generate QR code:", error);
       throw new Error(`Failed to generate QR code: ${error.message}`);
     }
   }
 
   // Generate complete KHQR payment data
   async generateKHQRPayment(order) {
+    console.log("Generating KHQR payment for order:", order._id, "Total:", order.total);
+    
+    // Validate order
+    if (!order || !order._id) {
+      console.error("Invalid order object provided to KHQR generation");
+      throw new Error("Invalid order object");
+    }
+    
+    // Validate required environment variables
+    if (!process.env.KHQR_MERCHANT_ID) {
+      console.error("KHQR_MERCHANT_ID is not set in environment variables");
+      throw new Error("KHQR_MERCHANT_ID is not configured");
+    }
+    
+    if (!process.env.KHQR_TERMINAL_ID) {
+      console.error("KHQR_TERMINAL_ID is not set in environment variables");
+      throw new Error("KHQR_TERMINAL_ID is not configured");
+    }
+    
     const amount = order.total;
     const currency = order.currency || '896'; // 896 = KHR, 840 = USD
     const merchantName = process.env.STORE_NAME || 'Your Store';
@@ -223,6 +255,7 @@ class KHQRGenerator {
     
     // Determine which bank to use (could be based on configuration or user selection)
     const bankCode = process.env.DEFAULT_KHQR_BANK || 'ABA';
+    console.log("Using bank code:", bankCode);
     
     let khqrPayload;
     switch (bankCode) {
@@ -235,14 +268,16 @@ class KHQRGenerator {
       default:
         khqrPayload = this.generateABAKHQR(order._id, amount, currency, merchantName, city);
     }
+    console.log("KHQR payload generated:", khqrPayload);
     
     // Generate QR code image
     const qrCodeUrl = await this.generateQRCode(khqrPayload, {
       width: 300,
       margin: 2
     });
+    console.log("QR code generated:", qrCodeUrl);
     
-    return {
+    const result = {
       khqrPayload,
       qrCodeUrl,
       merchantInfo: {
@@ -255,6 +290,9 @@ class KHQRGenerator {
       reference: `KHQR_${order._id}`,
       paymentUrl: `khqr://pay?data=${encodeURIComponent(khqrPayload)}`
     };
+    console.log("KHQR payment data result:", result);
+    
+    return result;
   }
 }
 

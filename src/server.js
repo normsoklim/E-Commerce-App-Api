@@ -30,7 +30,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000", // Allow your frontend origin
+    origin: process.env.FRONTEND_URL || "http://localhost:4200", // Allow your frontend origin
     methods: ["GET", "POST"]
   }
 });

@@ -4,3 +4,5 @@ products.json
 uploads
 .notification-api-test.md
 .test-notification-api.js
+.docs
+.vscode

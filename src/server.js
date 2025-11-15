@@ -37,12 +37,13 @@ const io = new Server(server, {
 
 // Middleware
 app.use(cors());
-app.use("/api/orders/webhook",
-  express.raw({ type: "application/json" }),
-  orderRoutes
-);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Special middleware for Stripe webhook (needs raw body)
+app.use("/api/orders/webhook/stripe",
+  express.raw({ type: "application/json" })
+);
 
 app.use("/api/categories", categoryRoutes);
 

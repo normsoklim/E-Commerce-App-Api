@@ -202,7 +202,7 @@
     <div class="container">
         <header>
             <h1>Secure Checkout</h1>
-            <p>Complete your purchase with PayPal or KHQR</p>
+            <p>Complete your purchase with PayPal, KHQR, or Credit Card</p>
         </header>
 
         <div class="notification" id="notification"></div>
@@ -223,6 +223,12 @@
                             <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9IjEwMCIgZmlsbD0iIzAwYjRhMCIvPjxwYXRoIGQ9Ik01MCA1MEgxNTB2MTAwSDUweiIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik03NSA3NUg4NXY1MEg3NXoiIGZpbGw9IiMwMGI0YTAiLz48cGF0aCBkPSJNMTA1IDc1SDEyNXY1MEgxMDV6IiBmaWxsPSIjMDBiNGEwIi8+PC9zdmc+" alt="KHQR">
                             <h3>KHQR</h3>
                             <p>ABA, ACLEDA, Wing</p>
+                        </div>
+                        
+                        <div class="payment-method" data-method="stripe" onclick="selectPaymentMethod('stripe')">
+                            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MDAgMjAwIj48cGF0aCBmaWxsPSIjNjczZWYwIiBkPSJNMzUwIDUwSDUwdjEwMGgzMDB6Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTkwIDgwSDExMHY0MEg5MHpNMTMwIDgwSDE1MHY0MEgxMzB6TTE3MCA4MEgyNTB2NDBIMTcweiIvPjwvc3ZnPg==" alt="Stripe">
+                            <h3>Credit Card</h3>
+                            <p>Visa, Mastercard, etc.</p>
                         </div>
                     </div>
                     
@@ -258,6 +264,13 @@
                                 
                                 <button class="btn" onclick="verifyKHQRPayment()" style="margin-top: 15px;">Verify Payment</button>
                             </div>
+                        </div>
+                        
+                        <!-- Stripe payment section -->
+                        <div id="stripe-section" class="hidden">
+                            <h3>Credit Card Payment</h3>
+                            <p>Secure payment with credit or debit card.</p>
+                            <button class="btn" onclick="initiateStripePayment()">Pay with Card</button>
                         </div>
                     </div>
                 </div>
@@ -351,6 +364,8 @@
                 document.getElementById('paypal-section').classList.remove('hidden');
             } else if (method === 'khqr') {
                 document.getElementById('khqr-section').classList.remove('hidden');
+            } else if (method === 'stripe') {
+                document.getElementById('stripe-section').classList.remove('hidden');
             }
             
             selectedPaymentMethod = method;
@@ -651,6 +666,106 @@
         // Check if this is a return from PayPal
         window.addEventListener('load', function() {
             handlePayPalReturn();
+        });
+        
+        // Initiate Stripe payment
+        async function initiateStripePayment() {
+            if (!selectedPaymentMethod || selectedPaymentMethod !== 'stripe') {
+                showNotification('Please select Credit Card as payment method', 'error');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                // Create order on backend first
+                const orderResponse = await fetch(`${getApiBaseUrl()}/api/orders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'sample_token'}`
+                    },
+                    body: JSON.stringify({
+                        shippingAddress: {
+                            address: '123 Main Street',
+                            city: 'Phnom Penh',
+                            postalCode: '12345',
+                            country: 'Cambodia'
+                        },
+                        paymentMethod: 'stripe',
+                        items: orderData.items,
+                        subtotal: orderData.total - orderData.shipping,
+                        shipping: orderData.shipping,
+                        total: orderData.total
+    })
+                });
+
+                // Check if the response is ok before parsing JSON
+                if (!orderResponse.ok) {
+                    const errorText = await orderResponse.text();
+                    console.error('Order creation error response:', errorText);
+                    throw new Error(`HTTP error! status: ${orderResponse.status}`);
+                }
+                
+                const orderResult = await orderResponse.json();
+
+                if (!orderResult.success) {
+                    throw new Error(orderResult.message || 'Failed to create order');
+                }
+
+                currentOrderId = orderResult.order._id;
+
+                // Create Stripe payment session
+                const stripeResponse = await fetch(`${getApiBaseUrl()}/api/orders/${currentOrderId}/stripe-payment`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'sample_token'}`
+                    }
+                });
+
+                // Check if the response is ok before parsing JSON
+                if (!stripeResponse.ok) {
+                    const errorText = await stripeResponse.text();
+                    console.error('Stripe payment creation error response:', errorText);
+                    throw new Error(`HTTP error! status: ${stripeResponse.status}`);
+                }
+                
+                const stripeResult = await stripeResponse.json();
+
+                if (!stripeResult.success) {
+                    throw new Error(stripeResult.message || 'Failed to initiate Stripe payment');
+                }
+
+                // Redirect to Stripe checkout
+                window.location.href = stripeResult.paymentData.checkoutUrl;
+
+            } catch (error) {
+                console.error('Stripe payment error:', error);
+                showNotification(`Stripe payment failed: ${error.message}`, 'error');
+                hideLoading();
+            }
+        }
+        
+        // Handle Stripe return (this would be called when returning from Stripe)
+        function handleStripeReturn() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session_id');
+            const orderId = urlParams.get('order_id');
+            
+            if (sessionId && orderId) {
+                // For Stripe, the webhook should have already updated the order status
+                // We can just show a success message and redirect
+                showNotification('Payment completed successfully! Order confirmed.');
+                setTimeout(() => {
+                    window.location.href = '/order-success';
+                }, 2000);
+            }
+        }
+        
+        // Check if this is a return from Stripe
+        window.addEventListener('load', function() {
+            handleStripeReturn();
         });
     </script>
 </body>

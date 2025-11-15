@@ -18,11 +18,16 @@ export const protect = async (req, res, next) => {
     // Decode token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Fetch user with isAdmin included
-    const user = await User.findById(decoded.id).select("_id name email isAdmin");
+    // Fetch user with isAdmin and tokenVersion included
+    const user = await User.findById(decoded.id).select("_id name email isAdmin tokenVersion");
 
     if (!user) {
       return res.status(401).json({ message: "User not found" });
+    }
+
+    // Check if token version matches (to handle logout)
+    if (user.tokenVersion !== decoded.tokenVersion) {
+      return res.status(401).json({ message: "Token is invalid" });
     }
 
     // Attach user to request

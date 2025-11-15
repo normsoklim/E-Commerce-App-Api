@@ -1,6 +1,7 @@
 import User from "../models/User.js";
 import generateToken from "../utils/generateToken.js";
 import bcrypt from "bcryptjs";
+
 // Login user
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
@@ -14,7 +15,7 @@ export const loginUser = async (req, res) => {
       email: user.email,
       avatar: user.avatar,
       isAdmin: user.isAdmin,
-      token: generateToken(user._id),
+      token: generateToken(user),
     });
   } else {
     res.status(401).json({ message: "Invalid email or password" });
@@ -58,7 +59,7 @@ export const registerUser = async (req, res) => {
       email: user.email,
       avatar: user.avatar,
       isAdmin: user.isAdmin,
-      token: generateToken(user._id),
+      token: generateToken(user),
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
@@ -102,9 +103,30 @@ export const updateUserProfile = async (req, res) => {
       name: updatedUser.name,
       email: updatedUser.email,
       avatar: updatedUser.avatar,
-      token: generateToken(updatedUser._id),
+      token: generateToken(updatedUser),
     });
   } else {
     res.status(404).json({ message: "User not found" });
+  }
+};
+
+// Refresh token
+export const refreshToken = async (req, res) => {
+  try {
+    // Check if user is authenticated (token was validated by middleware)
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authorized, no valid token" });
+    }
+
+    // Generate a new token
+    const newToken = generateToken(req.user);
+    
+    res.json({
+      token: newToken,
+      message: "Token refreshed successfully"
+    });
+  } catch (error) {
+    console.error("Token refresh error:", error);
+    res.status(500).json({ message: "Server error during token refresh" });
   }
 };

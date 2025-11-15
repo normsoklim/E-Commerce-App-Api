@@ -7,6 +7,9 @@ import { googleMapsClient, GOOGLE_MAPS_API_KEY } from '../config/googleMaps.js';
  */
 export const geocodeAddress = async (address) => {
   try {
+    console.log('Geocoding address:', address);
+    console.log('Using API key (first 5 chars):', GOOGLE_MAPS_API_KEY.substring(0, 5));
+    
     const response = await googleMapsClient.geocode({
       params: {
         address: address,
@@ -15,6 +18,8 @@ export const geocodeAddress = async (address) => {
       timeout: 1000 // milliseconds
     });
 
+    console.log('Geocoding response status:', response.data.status);
+    
     if (response.data.results.length > 0) {
       const location = response.data.results[0].geometry.location;
       return {
@@ -27,6 +32,7 @@ export const geocodeAddress = async (address) => {
       throw new Error('No results found for the provided address');
     }
   } catch (error) {
+    console.error('Geocoding error:', error.message);
     throw new Error(`Geocoding failed: ${error.message}`);
   }
 };
@@ -39,6 +45,9 @@ export const geocodeAddress = async (address) => {
  */
 export const reverseGeocode = async (lat, lng) => {
   try {
+    console.log('Reverse geocoding coordinates:', lat, lng);
+    console.log('Using API key (first 5 chars):', GOOGLE_MAPS_API_KEY.substring(0, 5));
+    
     const response = await googleMapsClient.reverseGeocode({
       params: {
         latlng: `${lat},${lng}`,
@@ -47,6 +56,8 @@ export const reverseGeocode = async (lat, lng) => {
       timeout: 1000 // milliseconds
     });
 
+    console.log('Reverse geocoding response status:', response.data.status);
+    
     if (response.data.results.length > 0) {
       return {
         formatted_address: response.data.results[0].formatted_address,
@@ -56,6 +67,7 @@ export const reverseGeocode = async (lat, lng) => {
       throw new Error('No results found for the provided coordinates');
     }
   } catch (error) {
+    console.error('Reverse geocoding error:', error.message);
     throw new Error(`Reverse geocoding failed: ${error.message}`);
   }
 };
@@ -68,6 +80,9 @@ export const reverseGeocode = async (lat, lng) => {
  */
 export const calculateDistance = async (origin, destination) => {
   try {
+    console.log('Calculating distance between:', origin, 'and', destination);
+    console.log('Using API key (first 5 chars):', GOOGLE_MAPS_API_KEY.substring(0, 5));
+    
     const response = await googleMapsClient.distancematrix({
       params: {
         origins: [origin],
@@ -77,6 +92,8 @@ export const calculateDistance = async (origin, destination) => {
       timeout: 1000 // milliseconds
     });
 
+    console.log('Distance matrix response status:', response.data.status);
+    
     if (response.data.rows.length > 0 && response.data.rows[0].elements.length > 0) {
       const element = response.data.rows[0].elements[0];
       if (element.status === 'OK') {
@@ -91,6 +108,7 @@ export const calculateDistance = async (origin, destination) => {
       throw new Error('No results found for distance calculation');
     }
   } catch (error) {
+    console.error('Distance calculation error:', error.message);
     throw new Error(`Distance calculation failed: ${error.message}`);
   }
 };
@@ -104,6 +122,9 @@ export const calculateDistance = async (origin, destination) => {
  */
 export const getDirections = async (origin, destination, mode = 'driving') => {
   try {
+    console.log('Getting directions from:', origin, 'to:', destination, 'mode:', mode);
+    console.log('Using API key (first 5 chars):', GOOGLE_MAPS_API_KEY.substring(0, 5));
+    
     const response = await googleMapsClient.directions({
       params: {
         origin: origin,
@@ -114,12 +135,15 @@ export const getDirections = async (origin, destination, mode = 'driving') => {
       timeout: 1000 // milliseconds
     });
 
+    console.log('Directions response status:', response.data.status);
+    
     if (response.data.status === 'OK') {
       return response.data;
     } else {
       throw new Error(`Directions request failed: ${response.data.status}`);
     }
   } catch (error) {
+    console.error('Directions error:', error.message);
     throw new Error(`Directions request failed: ${error.message}`);
   }
 };

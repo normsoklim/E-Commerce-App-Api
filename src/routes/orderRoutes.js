@@ -18,7 +18,25 @@ import { geocodeAddress } from "../utils/googleMaps.js";
 dotenv.config();
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" });
-
+// ------------------- View history that user bought -------------------
+router.get("/",protect, async (req, res) => {
+  try{
+    const orders = await Order.find({ user: req.user._id })
+        .populate("items.product", "name images")
+        .sort({ createdAt: -1 });
+    res.json({
+      success: true,
+      orders
+    });
+  }catch (error) {
+    console.error("Get order error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get order",
+      error: error.message
+    });
+  }
+})
 // ------------------- CREATE ORDER -------------------
 router.post("/", protect, async (req, res) => {
   try {
@@ -572,6 +590,125 @@ router.post("/webhook/paypal", express.json(), async (req, res) => {
   }
 });
 
+// Stripe webhook endpoint
+router.post("/webhook/stripe", express.raw({type: 'application/json'}), async (req, res) => {
+  try {
+    console.log("Stripe webhook received");
+    const sig = req.headers['stripe-signature'];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    
+    console.log("Stripe webhook signature:", sig);
+    console.log("Endpoint secret configured:", !!endpointSecret);
+    
+    let event;
+    
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+      console.log("Stripe webhook event constructed:", event.type);
+    } catch (err) {
+      console.error('Stripe webhook signature verification failed.', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+    
+    // Handle the checkout.session.completed event
+    if (event.type === 'checkout.session.completed') {
+      console.log("Processing checkout.session.completed event");
+      const session = event.data.object;
+      console.log("Session data:", {
+        id: session.id,
+        payment_intent: session.payment_intent,
+        metadata: session.metadata
+      });
+      
+      // Get the order ID from session metadata
+      const orderId = session.metadata?.orderId;
+      
+      if (!orderId) {
+        console.error('Order ID not found in session metadata');
+        return res.status(400).send('Order ID not found in session metadata');
+      }
+      
+      console.log("Finding order with ID:", orderId);
+      
+      // Find the order
+      const order = await Order.findById(orderId)
+          .populate("user", "email name")
+          .populate("items.product", "name price");
+          
+      if (!order) {
+        console.error('Order not found for ID:', orderId);
+        return res.status(404).send('Order not found');
+      }
+      
+      console.log("Found order:", order._id, "Current status:", order.status);
+      
+      // Update order status
+      if (order.status !== 'paid') {
+        console.log("Updating order status to confirmed");
+        order.status = 'confirmed';
+        order.paymentStatus = 'paid';
+        order.paidAt = new Date();
+        order.paymentResult = {
+          id: session.payment_intent,
+          status: 'completed',
+          gateway: 'stripe',
+          verifiedAt: new Date()
+        };
+        await order.save();
+        
+        console.log("Order updated successfully");
+        
+        // Emit real-time update to connected clients if WebSocket is available
+        if (global.io) {
+          global.io.emit('order-status-update', {
+            orderId: order._id,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            total: order.total,
+            paidAt: order.paidAt
+          });
+        }
+        
+        // Update payment record
+        const payment = await Payment.findOne({
+          orderId: order._id,
+          paymentMethod: 'stripe'
+        });
+        if (payment) {
+          console.log("Updating payment record");
+          payment.status = 'completed';
+          payment.paidAt = new Date();
+          payment.gatewayTransactionId = session.payment_intent;
+          await payment.save();
+        }
+        
+        // Send notifications
+        const message = formatOrderNotification(order, order.user.email, "Stripe Payment Completed");
+        
+        await sendNotification({
+          channel: "telegram",
+          userId: process.env.TELEGRAM_CHAT_ID,
+          title: "Stripe Payment Completed",
+          message,
+        });
+        
+        await sendNotification({
+          channel: "email",
+          userId: order.user._id,
+          email: order.user.email,
+          title: "Stripe Payment Completed",
+          message,
+        });
+      }
+    }
+    
+    res.json({ received: true });
+  } catch (error) {
+    console.error("Stripe webhook error:", error);
+    res.status(500).json({ error: "Webhook processing failed" });
+  }
+});
+
 // Define helper functions before they are used in the main route
 
 async function generateKHQRPayment(order) {
@@ -654,6 +791,10 @@ async function generatePayPalPayment(order) {
 
 async function generateStripePayment(order) {
   try {
+    console.log("Generating Stripe payment for order:", order._id);
+    console.log("Order items:", order.items);
+    console.log("Order total:", order.total);
+    
     // Generate Stripe payment using existing implementation
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -677,6 +818,8 @@ async function generateStripePayment(order) {
       },
     });
 
+    console.log("Stripe session created:", session.id);
+    
     order.stripeSessionId = session.id;
     await order.save();
 
@@ -695,6 +838,8 @@ async function generateStripePayment(order) {
     });
     await payment.save();
 
+    console.log("Payment record created for Stripe:", payment._id);
+
     return {
       sessionId: session.id,
       checkoutUrl: session.url,
@@ -702,6 +847,13 @@ async function generateStripePayment(order) {
     };
   } catch (error) {
     console.error("Stripe payment generation error:", error);
+    console.error("Error details:", {
+      message: error.message,
+      type: error.type,
+      code: error.code,
+      decline_code: error.decline_code,
+      payment_intent: error.payment_intent
+    });
     throw error;
   }
 }

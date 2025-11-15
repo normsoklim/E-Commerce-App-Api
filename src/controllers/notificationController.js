@@ -1,5 +1,13 @@
 import Notification from "../models/Notifications.js";
 import { sendNotification } from "../utils/notifications.js";
+import mongoose from "mongoose";
+
+// Helper function to check if ID is a valid ObjectId
+const isValidObjectId = (id) => {
+  if (!id) return false;
+  return mongoose.Types.ObjectId.isValid(id) && id.length === 24;
+};
+
 
 // Create a new notification
 export const createNotification = async (req, res) => {
@@ -52,7 +60,8 @@ export const createNotification = async (req, res) => {
 // Get all notifications for a user
 export const getUserNotifications = async (req, res) => {
   try {
-    const { userId } = req.params;
+    // Use userId from params if provided, otherwise use authenticated user's ID
+    const userId = req.params.userId || req.user._id;
     const { page = 1, limit = 10, type, read } = req.query;
 
     // Build query
@@ -140,14 +149,45 @@ export const getNotificationById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const notification = await Notification.findById(id).populate("user", "name email");
+    console.log(`Attempting to fetch notification with ID: ${id}`);
+
+    let notification = null;
+
+    try {
+      // Try to find notification by both ObjectId and string
+      let notification = null;
+      
+      // First try to find by string ID directly
+      notification = await Notification.findOne({ _id: id }).populate("user", "name email");
+      
+      // If not found and it looks like a valid ObjectId, try with ObjectId
+      if (!notification && mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+        try {
+          notification = await Notification.findOne({ _id: new mongoose.Types.ObjectId(id) }).populate("user", "name email");
+        } catch (objectIdError) {
+          // If ObjectId conversion fails, we'll stick with the string result (null)
+          console.log(`ObjectId conversion failed for ID ${id}:`, objectIdError.message);
+        }
+      }
+    } catch (queryError) {
+      console.error(`Error querying notification with ID ${id}:`, queryError);
+      // If there's an error with the query, return a 500 error
+      return res.status(500).json({
+        success: false,
+        message: "Error querying notification",
+        error: queryError.message,
+      });
+    }
 
     if (!notification) {
+      console.log(`Notification not found with ID: ${id}`);
       return res.status(404).json({
         success: false,
         message: "Notification not found",
       });
     }
+
+    console.log(`Found notification:`, notification);
 
     res.status(200).json({
       success: true,
@@ -169,22 +209,53 @@ export const updateNotification = async (req, res) => {
     const { id } = req.params;
     const { read } = req.body;
 
-    const notification = await Notification.findByIdAndUpdate(
-      id,
-      { read },
-      { new: true, runValidators: true }
-    );
+    console.log(`Attempting to update notification with ID: ${id}`);
 
-    if (!notification) {
-      return res.status(404).json({
+    let notification = null;
+
+    try {
+      // Try to find notification by both ObjectId and string
+      let notification = null;
+      
+      // First try to find by string ID directly
+      notification = await Notification.findOne({ user: req.user._id, _id: id });
+      
+      // If not found and it looks like a valid ObjectId, try with ObjectId
+      if (!notification && mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+        try {
+          notification = await Notification.findOne({ user: req.user._id, _id: new mongoose.Types.ObjectId(id) });
+        } catch (objectIdError) {
+          // If ObjectId conversion fails, we'll stick with the string result (null)
+          console.log(`ObjectId conversion failed for ID ${id}:`, objectIdError.message);
+        }
+      }
+    } catch (queryError) {
+      console.error(`Error querying notification with ID ${id}:`, queryError);
+      // If there's an error with the query, return a 500 error
+      return res.status(500).json({
         success: false,
-        message: "Notification not found",
+        message: "Error querying notification",
+        error: queryError.message,
       });
     }
 
+    if (!notification) {
+      console.log(`Notification not found with ID: ${id}`);
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found or access denied",
+      });
+    }
+
+    console.log(`Found notification:`, notification);
+
+    // Update the read status
+    notification.read = read;
+    const updatedNotification = await notification.save();
+
     res.status(200).json({
       success: true,
-      data: notification,
+      data: updatedNotification,
       message: "Notification updated successfully",
     });
   } catch (error) {
@@ -201,6 +272,14 @@ export const updateNotification = async (req, res) => {
 export const markAllAsRead = async (req, res) => {
   try {
     const { userId } = req.params;
+
+    // Validate ObjectId format for userId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
+      });
+    }
 
     const result = await Notification.updateMany(
       { user: userId, read: false },
@@ -226,14 +305,45 @@ export const deleteNotification = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const notification = await Notification.findByIdAndDelete(id);
+    console.log(`Attempting to delete notification with ID: ${id}`);
+
+    let notification = null;
+
+    try {
+      // Try to find and delete notification by both ObjectId and string
+      let notification = null;
+      
+      // First try to find and delete by string ID directly
+      notification = await Notification.findOneAndDelete({ _id: id });
+      
+      // If not found and it looks like a valid ObjectId, try with ObjectId
+      if (!notification && mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+        try {
+          notification = await Notification.findOneAndDelete({ _id: new mongoose.Types.ObjectId(id) });
+        } catch (objectIdError) {
+          // If ObjectId conversion fails, we'll stick with the string result (null)
+          console.log(`ObjectId conversion failed for ID ${id}:`, objectIdError.message);
+        }
+      }
+    } catch (queryError) {
+      console.error(`Error deleting notification with ID ${id}:`, queryError);
+      // If there's an error with the query, return a 500 error
+      return res.status(500).json({
+        success: false,
+        message: "Error deleting notification",
+        error: queryError.message,
+      });
+    }
 
     if (!notification) {
+      console.log(`Notification not found with ID: ${id}`);
       return res.status(404).json({
         success: false,
         message: "Notification not found",
       });
     }
+
+    console.log(`Deleted notification:`, notification);
 
     res.status(200).json({
       success: true,
@@ -253,6 +363,14 @@ export const deleteNotification = async (req, res) => {
 export const deleteAllNotifications = async (req, res) => {
   try {
     const { userId } = req.params;
+
+    // Validate ObjectId format for userId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
+      });
+    }
 
     const result = await Notification.deleteMany({ user: userId });
 
@@ -279,6 +397,14 @@ export const sendUserNotification = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "User ID, channel, title, and message are required",
+      });
+    }
+
+    // Validate ObjectId format for userId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
       });
     }
 

@@ -30,7 +30,14 @@ router
   .route("/:id")
   .get(protect, getNotificationById)
   .put(protect, updateNotification)
+  .patch(protect, updateNotification) // Add PATCH method as well
   .delete(protect, deleteNotification);
+
+// Add specific route for marking notification as read
+router.route("/:id/read").patch(protect, updateNotification);
+
+// Route for current user to get their notifications (uses req.user._id)
+router.route("/").get(protect, getUserNotifications);
 
 // Admin routes (requires admin authentication)
 router.route("/").post(protect, admin, createNotification).get(protect, admin, getAllNotifications);

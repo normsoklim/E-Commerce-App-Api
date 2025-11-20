@@ -14,29 +14,13 @@ import { formatOrderNotification } from "../utils/formatters.js";
 import KHQRGenerator from "../utils/khqr.js";
 import { createPayPalOrder } from "../config/paypal.js";
 import { geocodeAddress } from "../utils/googleMaps.js";
+import { getMyOrders, getOrderById, updateOrderStatus } from "../controllers/orderController.js";
 
 dotenv.config();
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" });
 // ------------------- View history that user bought -------------------
-router.get("/",protect, async (req, res) => {
-  try{
-    const orders = await Order.find({ user: req.user._id })
-        .populate("items.product", "name images")
-        .sort({ createdAt: -1 });
-    res.json({
-      success: true,
-      orders
-    });
-  }catch (error) {
-    console.error("Get order error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get order",
-      error: error.message
-    });
-  }
-})
+router.get("/", protect, getMyOrders);
 // ------------------- CREATE ORDER -------------------
 router.post("/", protect, async (req, res) => {
   try {
@@ -919,39 +903,9 @@ router.get("/user/orders", protect, async (req, res) => {
 });
 
 // ------------------- GET ORDER BY ID -------------------
-router.get("/:id", protect, async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id)
-        .populate("user", "name email")
-        .populate("items.product", "name price images");
+router.get("/:id", protect, getOrderById);
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found"
-      });
-    }
-
-    // Check if user owns the order or is admin
-    if (order.user._id.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to view this order"
-      });
-    }
-
-    res.json({
-      success: true,
-      order
-    });
-  } catch (error) {
-    console.error("Get order error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get order",
-      error: error.message
-    });
-  }
-});
+// ------------------- UPDATE ORDER STATUS -------------------
+router.put("/:id/status", protect, admin, updateOrderStatus);
 
 export default router;

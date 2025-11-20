@@ -18,74 +18,83 @@ let realTimeReportData = {
 
 // Function to update real-time report data
 export const updateRealTimeReportData = async () => {
+  console.log('Starting real-time report data update...');
   try {
-    const [orderStats, recentOrders, topProducts, salesByCategory] = await Promise.all([
-      Order.aggregate([
-        { $match: { status: { $in: ["paid", "confirmed"] } } },
-        {
-          $group: {
-            _id: null,
-            totalOrders: { $sum: 1 },
-            totalRevenue: { $sum: "$total" }
-          }
-        }
-      ]),
-      Order.find({ status: { $in: ["paid", "confirmed"] } })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .select("total status user createdAt"),
-      Order.aggregate([
-        { $match: { status: "paid" } },
-        { $unwind: "$items" },
-        {
-          $group: {
-            _id: "$items.product",
-            totalSold: { $sum: "$items.quantity" },
-          },
-        },
-        {
-          $lookup: {
-            from: "products",
-            localField: "items.product",
-            foreignField: "_id",
-            as: "product",
-          },
-        },
-        { $unwind: "$product" },
-        {
-          $project: {
-            _id: 0,
-            productId: "$product._id",
-            name: "$product.name",
-            totalSold: 1,
-          },
-        },
-        { $sort: { totalSold: -1 } },
-        { $limit: 5 },
-      ]),
-      Order.aggregate([
-        { $match: { status: "paid" } },
-        { $unwind: "$items" },
-        {
-          $lookup: {
-            from: "products",
-            localField: "items.product",
-            foreignField: "_id",
-            as: "productDetails",
-          },
-        },
-        { $unwind: "$productDetails" },
-        {
-          $group: {
-            _id: "$productDetails.category",
-            totalRevenue: { $sum: { $multiply: ["$items.price", "$items.quantity"] } },
-            totalQuantity: { $sum: "$items.quantity" },
-          },
-        },
-        { $sort: { totalRevenue: -1 } },
-      ])
-    ]);
+    // Set timeout for the entire aggregation operation
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Aggregation operation timed out')), 30000);
+    });
     
+    const [orderStats, recentOrders, topProducts, salesByCategory] = await Promise.race([
+      Promise.all([
+        Order.aggregate([
+          { $match: { status: { $in: ["paid", "confirmed"] } } },
+          {
+            $group: {
+              _id: null,
+              totalOrders: { $sum: 1 },
+              totalRevenue: { $sum: "$total" }
+            }
+          }
+        ]),
+        Order.find({ status: { $in: ["paid", "confirmed"] } })
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .select("total status user createdAt"),
+        Order.aggregate([
+          { $match: { status: "paid" } },
+          { $unwind: "$items" },
+          {
+            $group: {
+              _id: "$items.product",
+              totalSold: { $sum: "$items.quantity" },
+            },
+          },
+          {
+            $lookup: {
+              from: "products",
+              localField: "items.product",
+              foreignField: "_id",
+              as: "product",
+            },
+          },
+          { $unwind: "$product" },
+          {
+            $project: {
+              _id: 0,
+              productId: "$product._id",
+              name: "$product.name",
+              totalSold: 1,
+            },
+          },
+          { $sort: { totalSold: -1 } },
+          { $limit: 5 },
+        ]),
+        Order.aggregate([
+          { $match: { status: "paid" } },
+          { $unwind: "$items" },
+          {
+            $lookup: {
+              from: "products",
+              localField: "items.product",
+              foreignField: "_id",
+              as: "productDetails",
+            },
+          },
+          { $unwind: "$productDetails" },
+          {
+            $group: {
+              _id: "$productDetails.category",
+              totalRevenue: { $sum: { $multiply: ["$items.price", "$items.quantity"] } },
+              totalQuantity: { $sum: "$items.quantity" },
+            },
+          },
+          { $sort: { totalRevenue: -1 } },
+        ])
+      ]),
+      timeoutPromise
+    ]);
+    console.log('Aggregation queries completed successfully');
     realTimeReportData.totalOrders = orderStats[0]?.totalOrders || 0;
     realTimeReportData.totalRevenue = orderStats[0]?.totalRevenue || 0;
     realTimeReportData.recentOrders = recentOrders;
@@ -99,6 +108,11 @@ export const updateRealTimeReportData = async () => {
     }
   } catch (error) {
     console.error('Error updating real-time report data:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
   }
 };
 

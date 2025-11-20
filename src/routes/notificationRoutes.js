@@ -35,6 +35,8 @@ router
 
 // Add specific route for marking notification as read
 router.route("/:id/read").patch(protect, updateNotification);
+// Also add PUT method for marking as read (for compatibility with frontend)
+router.route("/:id").put(protect, updateNotification);
 
 // Route for current user to get their notifications (uses req.user._id)
 router.route("/").get(protect, getUserNotifications);

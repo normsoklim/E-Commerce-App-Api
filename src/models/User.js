@@ -8,7 +8,9 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true },
     avatar: { type: String, default: "" },
     isAdmin: { type: Boolean, default: false },
-    tokenVersion: { type: Number, default: 0 } // for logoutAllDevices
+    tokenVersion: { type: Number, default: 0 }, // for logoutAllDevices
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date }
   },
   { timestamps: true }
 );

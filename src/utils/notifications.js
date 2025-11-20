@@ -18,7 +18,9 @@ export const sendTelegramNotification = async (message) => {
 
 // ------------------- EMAIL -------------------
 const transporter = nodemailer.createTransport({
-  service: "gmail", // or another email provider
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // true for 465, false for other ports
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,

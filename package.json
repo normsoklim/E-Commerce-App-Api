@@ -1,13 +1,14 @@
 {
   "name": "ecommerce-backend",
   "version": "1.0.0",
-  "type": "module",
   "description": "",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test:maps": "node src/test-google-maps.js"
+    "test:maps": "node src/test-google-maps.js",
+    "test:email": "node test-email-config.js",
+    "verify-app-password": "node verify-app-password.js"
   },
   "keywords": [],
   "author": "",
@@ -16,12 +17,15 @@
     "@googlemaps/google-maps-services-js": "^3.4.2",
     "@paypal/checkout-server-sdk": "^1.0.3",
     "@paypal/paypal-server-sdk": "^1.1.0",
-    "axios": "^1.12.2",
+    "axios": "^1.13.2",
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "googleapis": "^166.0.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.18.0",
     "multer": "^2.0.2",
@@ -31,7 +35,8 @@
     "package-name": "^0.1.0",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",
-    "stripe": "^18.4.0"
+    "stripe": "^18.4.0",
+    "supertest": "^7.1.4"
   },
   "devDependencies": {
     "@types/socket.io": "^3.0.1",
